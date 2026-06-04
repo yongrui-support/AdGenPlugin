@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Ad Generator · 廣告創意</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          base: "#050506",
+          elevated: "#0a0a0c",
+          accent: { DEFAULT: "#5e6ad2", bright: "#6872d9" },
+        },
+        fontFamily: { sans: ["Inter", "system-ui", "sans-serif"] },
+      },
+    },
+  };
+</script>
+<script src="https://unpkg.com/vue@3.4.27/dist/vue.global.prod.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="frontend/theme.css" />
+<link rel="stylesheet" href="frontend/styles.css" />
+</head>
+<body>
+
+<!-- 氛圍背景（多層漸層 + grid + 浮動 blobs） -->
+<div class="ds-ambient" aria-hidden="true">
+  <div class="ds-blob ds-blob--1"></div>
+  <div class="ds-blob ds-blob--2"></div>
+  <div class="ds-blob ds-blob--3"></div>
+</div>
+
+<div id="app" class="ds-app" v-cloak>
+
+  <!-- HEADER -->
+  <header class="border-b border-white/[0.06]">
+    <div class="max-w-6xl mx-auto px-6 py-7">
+      <h1 class="ds-title text-2xl font-semibold">Ad Generator</h1>
+      <p class="ds-muted text-sm mt-1">
+        素材由 <code class="text-[#8a8f98]">generate-creatives</code> skill 產生。此介面僅供檢視；
+        <code class="text-[#8a8f98]">composition_prompt</code> 可一鍵複製貼到 GPT 生圖。
+      </p>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-6 py-8">
+
+    <!-- 產出選擇列 -->
+    <div class="flex flex-wrap items-center gap-3 mb-6">
+      <span class="ds-label">產出</span>
+      <select v-if="sets.length" v-model="selectedId" @change="select(selectedId)" class="ds-select">
+        <option v-for="s in sets" :key="s.id" :value="s.id">
+          {{ (s.brief && s.brief.brand_name) || s.id }} · {{ s.count }} 組{{ s.mode==='copy_only' ? '（補構圖）' : '' }}
+        </option>
+      </select>
+      <span v-if="!sets.length" class="ds-muted text-sm">
+        尚無創意 — 用 <code>generate-creatives</code> skill 產生
+      </span>
+    </div>
+
+    <!-- brief 面板 -->
+    <div v-if="current && current.brief" class="ds-surface p-4 mb-6 text-sm"
+         style="border-color: var(--border-accent); background: rgba(94,106,210,0.06);">
+      <div class="ds-label mb-2">品牌 brief</div>
+      <div class="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2">
+        <div><div class="ds-muted text-xs">品牌</div>{{ current.brief.brand_name || '—' }}</div>
+        <div v-if="current.brief.product"><div class="ds-muted text-xs">產品</div>{{ current.brief.product }}</div>
+        <div v-if="current.brief.offer"><div class="ds-muted text-xs">優惠</div>{{ current.brief.offer }}</div>
+        <div v-if="current.brief.brand_tone"><div class="ds-muted text-xs">語氣</div>{{ current.brief.brand_tone }}</div>
+        <div v-if="current.brief.target_language"><div class="ds-muted text-xs">語言</div>{{ current.brief.target_language }}</div>
+        <div v-if="current.brief.aspect"><div class="ds-muted text-xs">比例</div>{{ current.brief.aspect }}</div>
+        <div v-if="current.brief.usp && current.brief.usp.length" class="col-span-2 md:col-span-3">
+          <div class="ds-muted text-xs">賣點</div>
+          <div class="flex flex-wrap gap-1.5 mt-0.5">
+            <span v-for="(u,i) in current.brief.usp" :key="i" class="ds-badge">{{ u }}</span>
+          </div>
+        </div>
+        <div v-if="current.brief.compliance" class="col-span-2 md:col-span-3">
+          <div class="ds-muted text-xs">合規</div>{{ current.brief.compliance }}
+        </div>
+      </div>
+    </div>
+
+    <!-- 創意卡片 -->
+    <div v-if="loading" class="ds-muted py-16 text-center">載入中…</div>
+    <div v-else-if="current" class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div v-for="(c, idx) in current.creatives" :key="idx" class="ds-card p-5 space-y-4">
+
+        <!-- 標籤 + 複製 -->
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex flex-wrap gap-1.5">
+            <span v-if="c.angle" class="ds-badge">{{ c.angle }}</span>
+            <span v-if="c.hook_formula" class="ds-badge">{{ c.hook_formula }}</span>
+            <span v-if="c.funnel_stage" class="ds-badge">{{ c.funnel_stage }}</span>
+          </div>
+          <button @click="copy(idx)" class="ds-btn ds-btn--primary text-xs px-2.5 py-1 shrink-0">
+            {{ copiedIdx === idx ? '✓ 已複製' : '複製' }}
+          </button>
+        </div>
+
+        <!-- 文案（貼文用） -->
+        <div v-if="c.copy" class="space-y-1.5">
+          <div class="ds-label">文案（貼文用）</div>
+          <div v-if="c.copy.headline" class="font-semibold">{{ c.copy.headline }}</div>
+          <div v-if="c.copy.primary_text" class="text-sm whitespace-pre-wrap ds-muted">{{ c.copy.primary_text }}</div>
+          <span v-if="c.copy.cta" class="ds-btn ds-btn--secondary text-xs pointer-events-none mt-1">{{ c.copy.cta }}</span>
+        </div>
+
+        <!-- 圖中文字 content -->
+        <div v-if="c.content">
+          <div class="ds-label mb-1.5">圖中文字</div>
+          <div class="flex flex-wrap gap-1.5">
+            <span v-for="(v, k) in c.content" :key="k" class="ds-badge">{{ k }}：{{ v }}</span>
+          </div>
+        </div>
+
+        <!-- 構圖 prompt -->
+        <div v-if="c.composition_prompt">
+          <div class="ds-label mb-1.5">構圖 prompt</div>
+          <div class="ds-surface ds-scroll p-3 text-sm whitespace-pre-wrap max-h-56 overflow-auto">{{ c.composition_prompt }}</div>
+        </div>
+
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script src="frontend/app.js"></script>
+</body>
+</html>

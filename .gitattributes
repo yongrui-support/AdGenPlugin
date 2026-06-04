@@ -1,0 +1,45 @@
+# 預設：所有文字檔自動偵測，且在 repo 與 checkout 時一律使用 LF。
+# 這能確保在 Windows 開發、Linux / Docker 部署時換行一致，
+# 避免 shell script 出現 `#!/bin/sh^M`、或 Python 解析到 \r 的問題。
+* text=auto eol=lf
+
+# --- 明確指定 LF 的文字檔（Linux 執行需要）---
+*.py        text eol=lf
+*.sh        text eol=lf
+*.html      text eol=lf
+*.css       text eol=lf
+*.js        text eol=lf
+*.json      text eol=lf
+*.toml      text eol=lf
+*.md        text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.txt       text eol=lf
+*.cfg       text eol=lf
+*.ini       text eol=lf
+Dockerfile  text eol=lf
+.gitignore  text eol=lf
+.gitattributes text eol=lf
+
+# --- Windows 專用腳本：保留 CRLF（若日後再加入）---
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+*.ps1       text eol=crlf
+
+# --- Lockfile：當作文字、且標記為自動產生（diff 時可摺疊）---
+uv.lock     text eol=lf linguist-generated=true
+
+# --- 二進位檔：不做換行轉換、不做文字 diff ---
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.webp      binary
+*.ico       binary
+*.mp4       binary
+*.webm      binary
+*.woff      binary
+*.woff2     binary
+*.ttf       binary
+*.pdf       binary
+*.zip       binary

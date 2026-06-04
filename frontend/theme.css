@@ -1,0 +1,250 @@
+/* ============================================================
+   Ad Generator — Design System（Linear / Modern 暗色）
+   token 驅動、可組裝的 CSS 元件庫。做 UI widget = 套這些 class。
+   ------------------------------------------------------------
+   用法：
+     <div class="ds-card ds-card--interactive p-5"> … </div>
+     <button class="ds-btn ds-btn--primary">送出</button>
+     <span class="ds-badge ds-badge--win">贏家</span>
+   排版/間距仍用 Tailwind utility；顏色與質感用本檔的 token 與 ds-* 元件。
+   改主題只動 :root 的 token，元件全部跟著變。
+   ============================================================ */
+
+:root {
+  /* —— 顏色 —— */
+  --bg-deep: #020203;
+  --bg-base: #050506;
+  --bg-elevated: #0a0a0c;
+  --surface: rgba(255, 255, 255, 0.05);
+  --surface-hover: rgba(255, 255, 255, 0.08);
+  --fg: #ededef;
+  --fg-muted: #8a8f98;
+  --fg-subtle: rgba(255, 255, 255, 0.6);
+  --accent: #5e6ad2;
+  --accent-bright: #6872d9;
+  --accent-glow: rgba(94, 106, 210, 0.3);
+  --border: rgba(255, 255, 255, 0.06);
+  --border-hover: rgba(255, 255, 255, 0.1);
+  --border-accent: rgba(94, 106, 210, 0.3);
+
+  /* —— 圓角 —— */
+  --r-lg: 8px;
+  --r-xl: 12px;
+  --r-2xl: 16px;
+
+  /* —— 多層陰影 —— */
+  --shadow-card: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 2px 20px rgba(0, 0, 0, 0.4), 0 0 40px rgba(0, 0, 0, 0.2);
+  --shadow-card-hover: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 8px 40px rgba(0, 0, 0, 0.5), 0 0 80px rgba(94, 106, 210, 0.1);
+  --shadow-accent: 0 0 0 1px rgba(94, 106, 210, 0.5), 0 4px 12px rgba(94, 106, 210, 0.3), inset 0 1px 0 0 rgba(255, 255, 255, 0.2);
+  --shadow-inset: inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
+
+  /* —— 動態 —— */
+  --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* —— 基礎 —— */
+html { color-scheme: dark; }
+body {
+  background: var(--bg-base);
+  color: var(--fg);
+  font-family: "Inter", "Geist Sans", system-ui, -apple-system, "Segoe UI", "Noto Sans TC", sans-serif;
+}
+::selection { background: var(--accent-glow); }
+
+/* ============================================================
+   氛圍背景：在 <body> 放一個 .ds-ambient（含 3 顆 blob），
+   主內容容器加 .ds-app 墊在它上面。
+   ============================================================ */
+.ds-ambient {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: radial-gradient(ellipse at top, #0a0a0f 0%, #050506 50%, #020203 100%);
+}
+.ds-ambient::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.5) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.5) 1px, transparent 1px);
+  background-size: 64px 64px;
+  opacity: 0.02;
+}
+.ds-blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(140px);
+  will-change: transform;
+  animation: ds-float 9s var(--ease-expo) infinite;
+}
+.ds-blob--1 {
+  top: -15%; left: 50%;
+  width: 900px; height: 1000px;
+  transform: translateX(-50%);
+  background: radial-gradient(circle, var(--accent) 0%, transparent 70%);
+  opacity: 0.2;
+}
+.ds-blob--2 {
+  top: 18%; left: -12%;
+  width: 600px; height: 720px;
+  background: radial-gradient(circle, #7c3aed 0%, transparent 70%);
+  opacity: 0.13;
+  animation-duration: 11s;
+}
+.ds-blob--3 {
+  top: 42%; right: -10%;
+  width: 520px; height: 640px;
+  background: radial-gradient(circle, #3b82f6 0%, transparent 70%);
+  opacity: 0.12;
+  animation-duration: 10s;
+}
+@keyframes ds-float {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-22px) rotate(1deg); }
+}
+.ds-app { position: relative; z-index: 1; }
+
+/* ============================================================
+   文字
+   ============================================================ */
+.ds-title {
+  background: linear-gradient(to bottom, #fff, rgba(255, 255, 255, 0.7));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  letter-spacing: -0.02em;
+}
+.ds-muted { color: var(--fg-muted); }
+.ds-label {
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--fg-subtle);
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+
+/* ============================================================
+   Surface / Card
+   ============================================================ */
+.ds-surface {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2xl);
+}
+.ds-card {
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+  border: 1px solid var(--border);
+  border-radius: var(--r-2xl);
+  box-shadow: var(--shadow-card);
+  transition: transform 0.25s var(--ease-expo), border-color 0.25s var(--ease-expo), box-shadow 0.25s var(--ease-expo);
+}
+.ds-card--interactive { cursor: pointer; }
+.ds-card--interactive:hover {
+  transform: translateY(-4px);
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-card-hover);
+}
+
+/* ============================================================
+   Buttons
+   ============================================================ */
+.ds-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4em;
+  font-weight: 500;
+  font-size: 0.875rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: var(--r-lg);
+  border: 0;
+  cursor: pointer;
+  transition: all 0.2s var(--ease-expo);
+}
+.ds-btn:active { transform: scale(0.98); }
+.ds-btn--primary { background: var(--accent); color: #fff; box-shadow: var(--shadow-accent); }
+.ds-btn--primary:hover { background: var(--accent-bright); }
+.ds-btn--secondary { background: var(--surface); color: var(--fg); box-shadow: var(--shadow-inset); }
+.ds-btn--secondary:hover { background: var(--surface-hover); }
+.ds-btn--ghost { background: transparent; color: var(--fg-muted); }
+.ds-btn--ghost:hover { background: var(--surface); color: var(--fg); }
+
+/* ============================================================
+   Inputs / Select
+   ============================================================ */
+.ds-input, .ds-select {
+  background: #0f0f12;
+  color: var(--fg);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--r-lg);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.ds-input::placeholder { color: var(--fg-subtle); }
+.ds-input:focus, .ds-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(94, 106, 210, 0.28);
+}
+.ds-select option { background: var(--bg-elevated); color: var(--fg); }
+
+/* ============================================================
+   Badge / Pill
+   ============================================================ */
+.ds-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  font-size: 0.7rem;
+  line-height: 1;
+  padding: 0.28em 0.6em;
+  border-radius: 9999px;
+  border: 1px solid var(--border-accent);
+  background: rgba(94, 106, 210, 0.12);
+  color: var(--accent-bright);
+}
+.ds-badge--win {
+  border-color: rgba(52, 211, 153, 0.35);
+  background: rgba(16, 185, 129, 0.14);
+  color: #34d399;
+}
+
+/* ============================================================
+   Links / Modal / Divider
+   ============================================================ */
+.ds-link { color: var(--accent-bright); }
+.ds-link:hover { color: #fff; text-decoration: underline; }
+
+.ds-backdrop { background: rgba(2, 2, 3, 0.7); backdrop-filter: blur(8px); }
+.ds-modal {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2xl);
+  box-shadow: var(--shadow-card-hover);
+}
+
+.ds-divider {
+  height: 1px;
+  background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.1), transparent);
+}
+
+/* ============================================================
+   Utilities：JSON viewer（暗色）/ 細捲軸 / reduced-motion
+   ============================================================ */
+.json-viewer {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: #c9cdd6;
+}
+.ds-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.ds-scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 6px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-blob { animation: none; }
+  .ds-card, .ds-btn { transition: none; }
+}

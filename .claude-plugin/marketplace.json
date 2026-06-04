@@ -1,0 +1,17 @@
+{
+  "name": "ad-generator",
+  "owner": {
+    "name": "Allen Chen"
+  },
+  "metadata": {
+    "description": "Ad Generator — 廣告創意產生 + 檢視看板",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "ad-generator",
+      "description": "把品牌 brief 變成可投放的廣告素材（文案 + GPT 生圖構圖 prompt），附唯讀看板與環境安裝 skill。",
+      "source": "./"
+    }
+  ]
+}

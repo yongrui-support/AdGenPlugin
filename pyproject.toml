@@ -1,0 +1,23 @@
+[project]
+name = "ad-collector"
+version = "1.0.0"
+description = "廣告創意檢視看板（Flask + Vue 3）；素材由 generate-creatives skill 產生"
+requires-python = ">=3.9"
+dependencies = [
+    "flask>=3.0",
+    "flask-cors>=4.0",
+]
+
+[dependency-groups]
+# 開發用工具（uv sync 會自動安裝 dev 群組）
+dev = ["ruff>=0.6"]
+
+[tool.uv]
+# Application (flat scripts), not an installable package — uv只管 venv + deps，不建置本專案
+package = false
+
+[tool.ruff]
+# 對齊現有風格：Python 4 空格、目標 3.9
+target-version = "py39"
+line-length = 120
+

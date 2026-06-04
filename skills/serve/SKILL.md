@@ -1,0 +1,38 @@
+---
+name: serve
+description: 啟動 Ad Generator 唯讀看板（Flask，http://localhost:5000）檢視 generate-creatives 產出的素材。會用 skill 自己的位置定位 plugin 內的 server.py，並讀取你目前專案的 data/creatives。當被要求執行、啟動、開看板或檢視創意時使用。
+---
+
+# serve
+
+啟動唯讀看板。看板顯示**目前專案 `./data/creatives`** 底下的創意產出（generate-creatives 寫在那）。
+plugin 內含 Flask 後端與 Vue 前端，後端只服務前端 + 唯讀資料端點。
+
+## 步驟
+
+### 1. 取得 plugin 根目錄
+本 skill 被呼叫時，系統會在開頭給你「**Base directory for this skill**」（這個 SKILL.md 的絕對路徑，
+即 `<plugin>/skills/serve`）。**plugin 根 = 該 base 的上兩層**：
+```
+PLUGIN_DIR = <base directory>/../..
+```
+把它解析成實際絕對路徑（裡面有 `server.py`、`pyproject.toml`、`frontend/`、`index.html`），後續指令都用這個絕對路徑。
+不靠 cwd、不靠 `$CLAUDE_PLUGIN_ROOT`（後者在 skill bash 不可靠）。
+
+### 2. 確保相依（冪等）
+```bash
+uv sync --project "<PLUGIN_DIR>"
+```
+若 `uv` 不存在 → 請使用者先跑 `/ad-generator:setup`。
+
+### 3. 啟動（背景執行），資料指向使用者專案
+伺服器會持續執行（長時間阻塞），請在**背景**跑，再告訴使用者已在 http://localhost:5000 啟動：
+```bash
+uv run --project "<PLUGIN_DIR>" python "<PLUGIN_DIR>/server.py" --data-dir "$(pwd)/data"
+```
+（`<PLUGIN_DIR>` 換成步驟 1 解析出的實際絕對路徑。前端從 plugin 服務，創意資料讀使用者專案 `./data`。）
+
+## 注意
+
+- 看板沒資料 = 還沒產 → 先用 `/ad-generator:generate-creatives`。
+- 預設 port 5000，可加 `--port`；只綁 `127.0.0.1`、`debug=False`。

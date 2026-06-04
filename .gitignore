@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# uv / virtualenv
+.venv/
+
+# 注意：uv.lock 應進版控（鎖定團隊一致的相依版本），故不忽略
+
+# 創意產出資料（使用者內容，不進版控）
+data/
+
+# ruff 快取
+.ruff_cache/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
