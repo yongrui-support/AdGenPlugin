@@ -269,10 +269,17 @@ createApp({
       this.bulkRunning = true;
       this.bulkDone = 0;
       const n = (this.current.creatives || []).length;
-      for (let i = 0; i < n; i++) {
-        await this.generateImage(i);   // 逐張，避免一次轟炸 API
-        this.bulkDone++;
-      }
+      const CONCURRENCY = 5;   // 並發上限：一次最多同時生 5 張，避免撞 OpenAI rate limit
+      let next = 0;
+      const worker = async () => {
+        while (next < n) {
+          const i = next++;
+          await this.generateImage(i);
+          this.bulkDone++;
+        }
+      };
+      // 開 min(CONCURRENCY, n) 條 worker，共享 next 指標把 n 張分著跑
+      await Promise.all(Array.from({ length: Math.min(CONCURRENCY, n) }, worker));
       this.bulkRunning = false;
     },
   },

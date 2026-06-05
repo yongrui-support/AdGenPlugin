@@ -76,7 +76,7 @@
     <!-- 產出選擇列 -->
     <div class="flex flex-wrap items-center gap-3 mb-6">
       <span class="ds-label">文案選擇</span>
-      <select v-if="sets.length" v-model="selectedId" @change="select(selectedId)" class="ds-select">
+      <select v-if="sets.length" v-model="selectedId" @change="select(selectedId)" :disabled="bulkRunning" class="ds-select">
         <option v-for="s in sets" :key="s.id" :value="s.id">
           {{ (s.brief && s.brief.brand_name + '-' + s.brief.offer) || s.id }} · {{ s.count }} 組{{ s.mode==='copy_only' ? '（補構圖）' : '' }}
         </option>
@@ -128,7 +128,8 @@
             <span v-if="c.funnel_stage" class="ds-badge">{{ c.funnel_stage }}</span>
           </div>
           <div class="flex items-center gap-1.5 shrink-0">
-            <button @click="deleteCreative(idx)" :disabled="deletingIdx === idx"
+            <button @click="deleteCreative(idx)"
+                    :disabled="deletingIdx === idx || (gen[idx] && gen[idx].loading) || bulkRunning"
                     class="ds-btn ds-btn--ghost text-xs px-2.5 py-1" style="color:#e5707e;" title="刪除這組">
               {{ deletingIdx === idx ? '刪除中…' : '刪除' }}
             </button>
@@ -136,7 +137,7 @@
                     class="ds-btn ds-btn--ghost text-xs px-2.5 py-1">
               {{ savedIdx === idx ? '✓ 已存' : (savingIdx === idx ? '儲存中…' : '儲存') }}
             </button>
-            <button @click="generateImage(idx)" :disabled="gen[idx] && gen[idx].loading"
+            <button @click="generateImage(idx)" :disabled="(gen[idx] && gen[idx].loading) || bulkRunning"
                     class="ds-btn ds-btn--secondary text-xs px-2.5 py-1">
               {{ gen[idx] && gen[idx].loading ? '生圖中…' : '生圖' }}
             </button>
@@ -177,8 +178,14 @@
 
         <!-- 生成的主視覺（img 一律掛載以探測既有圖，靠 @load/@error 顯隱） -->
         <div>
-          <div class="ds-label mb-1.5" v-show="gen[idx] && gen[idx].shown">主視覺</div>
-          <img :src="imgSrc(idx)" v-show="gen[idx] && gen[idx].shown" alt="生成主視覺"
+          <div class="ds-label mb-1.5" v-show="gen[idx] && (gen[idx].loading || gen[idx].shown)">主視覺</div>
+          <!-- 生成中：骨架 + 提示，避免以為當掉而重複按 -->
+          <div v-if="gen[idx] && gen[idx].loading"
+               class="ds-surface rounded-lg animate-pulse flex items-center justify-center text-center px-4"
+               style="aspect-ratio: 1 / 1;">
+            <span class="ds-muted text-xs leading-relaxed">🎨 生成中…一張約 10–30 秒，請稍候<br>（別重複按，完成會自動出現）</span>
+          </div>
+          <img :src="imgSrc(idx)" v-show="gen[idx] && gen[idx].shown && !gen[idx].loading" alt="生成主視覺"
                @load="gen[idx].shown = true" @error="gen[idx].shown = false"
                class="w-full rounded-lg border border-white/[0.06]" />
           <div v-if="gen[idx] && gen[idx].error" class="text-xs mt-1" style="color:#e5707e">{{ gen[idx].error }}</div>

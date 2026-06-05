@@ -296,4 +296,5 @@ if __name__ == "__main__":
     print(f"創意資料目錄：{DIR_CREATIVES}", flush=True)
     print(f"生圖輸出目錄：{_images_dir()}", flush=True)
     print(f".env：{ENV_FILE}（OpenAI key{'已' if os.environ.get('OPENAI_API_KEY') else '未'}設定）\n", flush=True)
-    app.run(host="127.0.0.1", port=args.port, debug=False, use_reloader=args.reload)
+    # threaded=True：並行生圖時能同時處理多個 /api/images 請求（每請求各自呼叫 OpenAI）
+    app.run(host="127.0.0.1", port=args.port, debug=False, threaded=True, use_reloader=args.reload)
