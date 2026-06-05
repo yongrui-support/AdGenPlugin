@@ -1,6 +1,6 @@
 ---
 name: serve
-description: 啟動 Ad Generator 唯讀看板（Flask，http://localhost:5000）檢視 generate-creatives 產出的素材。會用 skill 自己的位置定位 plugin 內的 server.py，並讀取你目前專案的 data/creatives。當被要求執行、啟動、開看板或檢視創意時使用。
+description: 啟動 Ad Generator 的廣告 WebUI / 唯讀看板（Flask，http://localhost:5000）檢視 generate-creatives 產出的廣告素材。當使用者說「開啟廣告 WebUI / 打開廣告介面 / 開看板 / 啟動看板 / 開網頁看素材 / 把 server 跑起來 / 啟動服務」等，觸發。會用 skill 自己的位置定位 plugin 內的 server.py，並讀取你目前專案的 data/creatives。
 ---
 
 # serve

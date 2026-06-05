@@ -1,6 +1,6 @@
 ---
 name: setup
-description: 一鍵安裝 Ad Generator 的執行環境 —— 偵測作業系統，缺套件管理器就裝（macOS → Homebrew、Windows → Scoop），再裝 uv，最後 uv sync 安裝相依。第一次使用、或 serve/generate 提示缺 uv 時用。
+description: 安裝/設定 Ad Generator（廣告創意產生・廣告發想機器人）的執行環境：偵測作業系統，缺套件管理器就裝（macOS → Homebrew、Windows → Scoop），再裝 uv、uv sync 安裝相依。當使用者說「幫我設定環境 / 安裝環境 / 初始化 / 做廣告發想機器人的環境設定 / 裝好這個工具 / 第一次使用要準備什麼」，或 serve、generate 提示缺 uv 時，觸發。
 ---
 
 # setup
