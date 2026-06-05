@@ -176,20 +176,29 @@
                     class="ds-input ds-scroll w-full text-sm" style="resize: vertical;"></textarea>
         </div>
 
-        <!-- 生成的主視覺（img 一律掛載以探測既有圖，靠 @load/@error 顯隱） -->
-        <div>
-          <div class="ds-label mb-1.5" v-show="gen[idx] && (gen[idx].loading || gen[idx].shown)">主視覺</div>
+        <!-- 主視覺：可多張（生圖會累積），用 < > 切換 -->
+        <div v-if="gen[idx] && (gen[idx].loading || imgCount(idx) > 0)">
+          <div class="flex items-center justify-between mb-1.5">
+            <div class="ds-label">
+              主視覺<span v-if="imgCount(idx) > 1" class="ds-muted font-normal"> · {{ gen[idx].view + 1 }}/{{ imgCount(idx) }}</span>
+            </div>
+            <div v-if="imgCount(idx) > 1 && !gen[idx].loading" class="flex items-center gap-1">
+              <button @click="prevImg(idx)" class="ds-btn ds-btn--ghost text-sm px-2 py-0.5" title="上一張">‹</button>
+              <button @click="nextImg(idx)" class="ds-btn ds-btn--ghost text-sm px-2 py-0.5" title="下一張">›</button>
+            </div>
+          </div>
           <!-- 生成中：骨架 + 提示，避免以為當掉而重複按 -->
           <div v-if="gen[idx] && gen[idx].loading"
                class="ds-surface rounded-lg animate-pulse flex items-center justify-center text-center px-4"
                style="aspect-ratio: 1 / 1;">
             <span class="ds-muted text-xs leading-relaxed">🎨 生成中…一張約 10–30 秒，請稍候<br>（別重複按，完成會自動出現）</span>
           </div>
-          <img :src="imgSrc(idx)" v-show="gen[idx] && gen[idx].shown && !gen[idx].loading" alt="生成主視覺"
-               @load="gen[idx].shown = true" @error="gen[idx].shown = false"
+          <img v-else :src="imgSrc(idx)" alt="主視覺"
                class="w-full rounded-lg border border-white/[0.06]" />
           <div v-if="gen[idx] && gen[idx].error" class="text-xs mt-1" style="color:#e5707e">{{ gen[idx].error }}</div>
         </div>
+        <!-- 沒有圖但有錯誤時也要顯示 -->
+        <div v-else-if="gen[idx] && gen[idx].error" class="text-xs" style="color:#e5707e">{{ gen[idx].error }}</div>
 
       </div>
     </div>

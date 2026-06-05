@@ -74,8 +74,12 @@ createApp({
         const r = await fetch('/api/creatives/' + encodeURIComponent(id));
         this.current = await r.json();
         const creatives = this.current.creatives || [];
-        // 探測既有圖：img 一律掛載、用 @load/@error 決定是否顯示
-        this.gen = creatives.map(() => ({ loading: false, error: '', bust: 0, shown: false }));
+        // 每組一個狀態：view = 目前在看 images 清單的第幾張（預設看最新一張）
+        this.gen = creatives.map((c) => ({
+          loading: false,
+          error: '',
+          view: Math.max(0, ((c.images && c.images.length) || 1) - 1),
+        }));
       } catch (e) {
         console.error('select', e);
       } finally {
@@ -215,13 +219,30 @@ createApp({
       }
     },
 
-    // ----- 生圖 -----
+    // ----- 生圖 / 圖片切換 -----
+    imgCount(idx) {
+      const c = ((this.current && this.current.creatives) || [])[idx];
+      return (c && Array.isArray(c.images) && c.images.length) || 0;
+    },
+
     imgSrc(idx) {
       const c = ((this.current && this.current.creatives) || [])[idx];
       const g = this.gen[idx];
-      if (!c || !c.uid || !g) return '';
-      // uid 命名 → 網址穩定對應該組；?v=bust 只在「重生同一張」時改變以破快取
-      return '/api/images/' + c.uid + '?v=' + g.bust;
+      if (!c || !Array.isArray(c.images) || !c.images.length || !g) return '';
+      // 每張圖各自一個 uid（內容不變）→ 網址穩定、免 cache-bust；view 指目前看第幾張
+      const v = Math.min(Math.max(g.view, 0), c.images.length - 1);
+      return '/api/images/' + c.images[v];
+    },
+
+    prevImg(idx) {
+      const g = this.gen[idx]; const n = this.imgCount(idx);
+      if (!g || !n) return;
+      g.view = (g.view - 1 + n) % n;   // 環狀切換
+    },
+    nextImg(idx) {
+      const g = this.gen[idx]; const n = this.imgCount(idx);
+      if (!g || !n) return;
+      g.view = (g.view + 1) % n;
     },
 
     async generateImage(idx) {
@@ -239,8 +260,9 @@ createApp({
         });
         const d = await r.json();
         if (r.ok) {
-          g.bust++;       // cache-bust → 重新載入新圖
-          g.shown = true;
+          // 後端回傳更新後的 images 清單；append 不覆蓋，切到最新一張
+          this.current.creatives[idx].images = d.images || [];
+          g.view = Math.max(0, this.current.creatives[idx].images.length - 1);
         } else {
           g.error = d.error || '生圖失敗';
         }

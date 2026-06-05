@@ -113,7 +113,7 @@ def api_creatives_get(creative_id):
     d = _safe_read(DIR_CREATIVES, creative_id)
     if d is None:
         return jsonify({"error": "找不到該創意"}), 404
-    if _ensure_uids(d):
+    if _ensure_creative_fields(d):
         _save_batch(creative_id, d)
     return jsonify(d)
 
@@ -133,7 +133,10 @@ def api_creatives_modify(creative_id, idx):
         removed = creatives.pop(idx)
         d["creatives"] = creatives
         _save_batch(creative_id, d)
-        _remove_image(removed.get("uid") if isinstance(removed, dict) else None)  # uid 命名，刪這張即可
+        if isinstance(removed, dict):  # 連同該組所有生成圖一起刪
+            for u in removed.get("images") or []:
+                _remove_image(u)
+            _remove_image(removed.get("uid"))  # 保險：清舊版單張
         return jsonify({"ok": True, "count": len(creatives)})
 
     # PUT：回存編輯後的內容
@@ -152,12 +155,21 @@ def _save_batch(creative_id, d):
         json.dump(d, f, ensure_ascii=False, indent=2)
 
 
-def _ensure_uids(d):
-    """確保每組有穩定 uid（生成圖以 uid 命名 → 刪除/排序都不影響對應）。回傳是否有變更。"""
+def _ensure_creative_fields(d):
+    """確保每組有 uid 與 images（該組生成圖的 uid 清單）；舊版單張 <uid>.png 遷入清單。回傳是否有變更。"""
     changed = False
+    images_dir = _images_dir()
     for c in d.get("creatives") or []:
-        if isinstance(c, dict) and not c.get("uid"):
+        if not isinstance(c, dict):
+            continue
+        if not c.get("uid"):
             c["uid"] = uuid.uuid4().hex[:12]
+            changed = True
+        if not isinstance(c.get("images"), list):
+            imgs = []
+            if c.get("uid") and os.path.isfile(os.path.join(images_dir, c["uid"] + ".png")):
+                imgs.append(c["uid"])  # 舊版：單張圖以 creative uid 命名 → 納入清單
+            c["images"] = imgs
             changed = True
     return changed
 
@@ -250,10 +262,7 @@ def api_generate_image():
     if not isinstance(idx, int) or idx < 0 or idx >= len(creatives):
         return jsonify({"error": "index 超出範圍"}), 400
     creative = creatives[idx]
-    if not creative.get("uid"):  # 舊資料補 uid 並存回
-        _ensure_uids(d)
-        _save_batch(cid, d)
-    uid = creative["uid"]
+    _ensure_creative_fields(d)  # 確保有 uid / images 清單
     # prompt 由前端帶來（= 複製鈕那份：使用說明 + {brief, creative} JSON），讓 GPT 自行依
     # composition_prompt 的 {{content.x}} 對應 content 判讀；直接呼叫 API 未帶 prompt 時，退用 JSON。
     prompt = body.get("prompt") or json.dumps({"brief": d.get("brief"), "creative": creative}, ensure_ascii=False)
@@ -266,11 +275,15 @@ def api_generate_image():
         return jsonify({"error": f"生圖失敗：{e}"}), 502
     if not b64:
         return jsonify({"error": "模型未回傳圖片"}), 502
+    # 每次生成都用新 uid → 不覆蓋舊圖，append 到該組 images 清單（前端可 < > 切換）
+    new_uid = uuid.uuid4().hex[:12]
     images_dir = _images_dir()
     os.makedirs(images_dir, exist_ok=True)
-    with open(os.path.join(images_dir, uid + ".png"), "wb") as f:
+    with open(os.path.join(images_dir, new_uid + ".png"), "wb") as f:
         f.write(base64.b64decode(b64))
-    return jsonify({"ok": True, "url": f"/api/images/{uid}"})
+    creative.setdefault("images", []).append(new_uid)
+    _save_batch(cid, d)
+    return jsonify({"ok": True, "uid": new_uid, "images": creative["images"]})
 
 
 @app.route("/api/images/<uid>")
