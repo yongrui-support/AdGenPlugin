@@ -39,12 +39,17 @@
 
   <!-- HEADER -->
   <header class="border-b border-white/[0.06]">
-    <div class="max-w-6xl mx-auto px-6 py-7">
-      <h1 class="ds-title text-2xl font-semibold">Ad Generator</h1>
-      <p class="ds-muted text-sm mt-1">
-        素材由 <code class="text-[#8a8f98]">generate-creatives</code> skill 產生。此介面僅供檢視；
-        <code class="text-[#8a8f98]">composition_prompt</code> 可一鍵複製貼到 GPT 生圖。
-      </p>
+    <div class="max-w-6xl mx-auto px-6 py-7 flex items-start justify-between gap-4">
+      <div>
+        <h1 class="ds-title text-2xl font-semibold">Ad Generator</h1>
+        <p class="ds-muted text-sm mt-1">
+          素材由 <code class="text-[#8a8f98]">generate-creatives</code> skill 產生。可一鍵複製
+          <code class="text-[#8a8f98]">composition_prompt</code>，或設定 API key 後直接「生圖」。
+        </p>
+      </div>
+      <button @click="openSettings" class="ds-btn ds-btn--ghost text-sm px-3 py-2 shrink-0" title="設定 OpenAI API key">
+        ⚙ 設定<span v-if="keySet" class="ds-badge ml-2">key ✓</span>
+      </button>
     </div>
   </header>
 
@@ -98,9 +103,15 @@
             <span v-if="c.hook_formula" class="ds-badge">{{ c.hook_formula }}</span>
             <span v-if="c.funnel_stage" class="ds-badge">{{ c.funnel_stage }}</span>
           </div>
-          <button @click="copy(idx)" class="ds-btn ds-btn--primary text-xs px-2.5 py-1 shrink-0">
-            {{ copiedIdx === idx ? '✓ 已複製' : '複製' }}
-          </button>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <button @click="generateImage(idx)" :disabled="gen[idx] && gen[idx].loading"
+                    class="ds-btn ds-btn--secondary text-xs px-2.5 py-1">
+              {{ gen[idx] && gen[idx].loading ? '生圖中…' : '生圖' }}
+            </button>
+            <button @click="copy(idx)" class="ds-btn ds-btn--primary text-xs px-2.5 py-1">
+              {{ copiedIdx === idx ? '✓ 已複製' : '複製' }}
+            </button>
+          </div>
         </div>
 
         <!-- 文案（貼文用） -->
@@ -125,10 +136,47 @@
           <div class="ds-surface ds-scroll p-3 text-sm whitespace-pre-wrap max-h-56 overflow-auto">{{ c.composition_prompt }}</div>
         </div>
 
+        <!-- 生成的主視覺（img 一律掛載以探測既有圖，靠 @load/@error 顯隱） -->
+        <div>
+          <div class="ds-label mb-1.5" v-show="gen[idx] && gen[idx].shown">主視覺</div>
+          <img :src="imgSrc(idx)" v-show="gen[idx] && gen[idx].shown" alt="生成主視覺"
+               @load="gen[idx].shown = true" @error="gen[idx].shown = false"
+               class="w-full rounded-lg border border-white/[0.06]" />
+          <div v-if="gen[idx] && gen[idx].error" class="text-xs mt-1" style="color:#e5707e">{{ gen[idx].error }}</div>
+        </div>
+
       </div>
     </div>
 
   </main>
+
+  <!-- 設定 modal：填 OpenAI API key（存後端 .env，永不回傳前端） -->
+  <div v-if="showSettings" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="ds-backdrop absolute inset-0" @click="showSettings = false"></div>
+    <div class="ds-modal relative w-full max-w-md p-6 space-y-4">
+      <div class="flex items-center justify-between">
+        <h2 class="ds-title text-lg font-semibold">設定</h2>
+        <button @click="showSettings = false" class="ds-btn ds-btn--ghost text-sm px-2 py-1">✕</button>
+      </div>
+      <div>
+        <div class="ds-label mb-1.5">OpenAI API key</div>
+        <input v-model="apiKeyInput" type="password" placeholder="sk-..." autocomplete="off"
+               @keyup.enter="saveKey" class="ds-input w-full" />
+        <p class="ds-muted text-xs mt-2">
+          存到專案根目錄 <code>.env</code>（已 gitignore，不進版控）；只在本機後端使用，不會回傳前端。
+          目前狀態：<span :style="keySet ? 'color:#5fd39a' : 'color:#8a8f98'">{{ keySet ? '已設定' : '未設定' }}</span>
+        </p>
+      </div>
+      <div class="flex items-center justify-end gap-2">
+        <span class="ds-muted text-xs mr-auto">{{ keyMsg }}</span>
+        <button @click="showSettings = false" class="ds-btn ds-btn--ghost text-sm px-3 py-1.5">取消</button>
+        <button @click="saveKey" :disabled="savingKey" class="ds-btn ds-btn--primary text-sm px-3 py-1.5">
+          {{ savingKey ? '儲存中…' : '儲存' }}
+        </button>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <script src="frontend/app.js"></script>
