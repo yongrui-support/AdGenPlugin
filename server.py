@@ -115,24 +115,53 @@ def api_creatives_get(creative_id):
     return jsonify(d)
 
 
-@app.route("/api/creatives/<creative_id>/<int:idx>", methods=["PUT"])
-def api_creatives_update(creative_id, idx):
-    """回存單一組創意（在看板編輯文案 / content / 構圖 prompt 後存回 <id>.json）。"""
+@app.route("/api/creatives/<creative_id>/<int:idx>", methods=["PUT", "DELETE"])
+def api_creatives_modify(creative_id, idx):
+    """編輯回存（PUT）或刪除（DELETE）單一組創意，存回 <id>.json。"""
     d = _safe_read(DIR_CREATIVES, creative_id)  # 同時驗證 id 合法（穿越則回 None）
     if d is None:
         return jsonify({"error": "找不到該創意"}), 404
     creatives = d.get("creatives") or []
-    if idx < 0 or idx >= len(creatives):
+    n = len(creatives)
+    if idx < 0 or idx >= n:
         return jsonify({"error": "index 超出範圍"}), 400
+
+    if request.method == "DELETE":
+        del creatives[idx]
+        d["creatives"] = creatives
+        _save_batch(creative_id, d)
+        _shift_images_after_delete(creative_id, idx, n)  # 後面的圖往前搬一格，維持 index 對齊
+        return jsonify({"ok": True, "count": len(creatives)})
+
+    # PUT：回存編輯後的內容
     body = request.get_json(silent=True) or {}
     creative = body.get("creative")
     if not isinstance(creative, dict):
         return jsonify({"error": "creative 需為物件"}), 400
     creatives[idx] = creative
     d["creatives"] = creatives
+    _save_batch(creative_id, d)
+    return jsonify({"ok": True})
+
+
+def _save_batch(creative_id, d):
     with open(os.path.join(DIR_CREATIVES, creative_id + ".json"), "w", encoding="utf-8") as f:
         json.dump(d, f, ensure_ascii=False, indent=2)
-    return jsonify({"ok": True})
+
+
+def _shift_images_after_delete(creative_id, idx, old_count):
+    """刪掉 idx 的圖，並把 idx+1..old_count-1 的圖各往前移一格（檔名 index 對齊新陣列）。"""
+    images_dir = _images_dir()
+    try:
+        cur = os.path.join(images_dir, f"{creative_id}__{idx}.png")
+        if os.path.isfile(cur):
+            os.remove(cur)
+        for j in range(idx + 1, old_count):
+            src = os.path.join(images_dir, f"{creative_id}__{j}.png")
+            if os.path.isfile(src):
+                os.replace(src, os.path.join(images_dir, f"{creative_id}__{j - 1}.png"))
+    except Exception:
+        pass
 
 
 # ---------- 設定（API key）----------

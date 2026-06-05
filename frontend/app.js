@@ -21,6 +21,7 @@ createApp({
       copiedIdx: -1,
       savingIdx: -1,
       savedIdx: -1,
+      deletingIdx: -1,
       // 設定 / API key
       showSettings: false,
       apiKeyInput: '',
@@ -119,6 +120,30 @@ createApp({
         alert('儲存失敗：' + e);
       } finally {
         this.savingIdx = -1;
+      }
+    },
+
+    // 刪除單組（會直接從 JSON 移除，無法復原）
+    async deleteCreative(idx) {
+      if (!confirm('確定刪除這組創意？會直接從 JSON 移除，無法復原。')) return;
+      this.deletingIdx = idx;
+      try {
+        const r = await fetch('/api/creatives/' + encodeURIComponent(this.selectedId) + '/' + idx, {
+          method: 'DELETE',
+        });
+        if (r.ok) {
+          const s = this.sets.find((x) => x.id === this.selectedId);
+          if (s) s.count = Math.max(0, s.count - 1);
+          await this.select(this.selectedId);   // 重載 → index / 圖片重新對齊
+        } else {
+          const d = await r.json().catch(() => ({}));
+          alert('刪除失敗：' + (d.error || r.status));
+        }
+      } catch (e) {
+        console.error('delete', e);
+        alert('刪除失敗：' + e);
+      } finally {
+        this.deletingIdx = -1;
       }
     },
 

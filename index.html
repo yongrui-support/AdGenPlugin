@@ -128,6 +128,10 @@
             <span v-if="c.funnel_stage" class="ds-badge">{{ c.funnel_stage }}</span>
           </div>
           <div class="flex items-center gap-1.5 shrink-0">
+            <button @click="deleteCreative(idx)" :disabled="deletingIdx === idx"
+                    class="ds-btn ds-btn--ghost text-xs px-2.5 py-1" style="color:#e5707e;" title="刪除這組">
+              {{ deletingIdx === idx ? '刪除中…' : '刪除' }}
+            </button>
             <button @click="saveCreative(idx)" :disabled="savingIdx === idx"
                     class="ds-btn ds-btn--ghost text-xs px-2.5 py-1">
               {{ savedIdx === idx ? '✓ 已存' : (savingIdx === idx ? '儲存中…' : '儲存') }}
