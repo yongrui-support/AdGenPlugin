@@ -11,6 +11,9 @@ __pycache__/
 # 創意產出資料（使用者內容，不進版控）
 data/
 
+# OpenAI API key 等機密（設定看板填入後寫在這，絕不進版控）
+.env
+
 # ruff 快取
 .ruff_cache/
 
