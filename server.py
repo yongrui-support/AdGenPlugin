@@ -18,7 +18,6 @@ import base64
 import glob
 import json
 import os
-import re
 import sys
 
 # 強制 stdout/stderr 使用 UTF-8（避免 Windows cp950/cp1252 出現 UnicodeEncodeError）
@@ -161,16 +160,6 @@ def api_settings_set_key():
 # ---------- 生圖（Responses API / image_generation 工具）----------
 
 
-def _resolve_prompt(creative):
-    """把 composition_prompt 裡的 {{content.欄位}} 換成該創意 content 的實字。"""
-    content = creative.get("content") or {}
-    return re.sub(
-        r"\{\{content\.([A-Za-z0-9_]+)\}\}",
-        lambda m: str(content.get(m.group(1), m.group(0))),
-        creative.get("composition_prompt") or "",
-    )
-
-
 def _generate_image_b64(prompt, size, quality):
     """用 OpenAI Responses API 的 image_generation 工具生圖，回傳 base64 PNG。"""
     from openai import OpenAI
@@ -202,7 +191,9 @@ def api_generate_image():
     if not isinstance(idx, int) or idx < 0 or idx >= len(creatives):
         return jsonify({"error": "index 超出範圍"}), 400
     creative = creatives[idx]
-    prompt = _resolve_prompt(creative)
+    # prompt 由前端帶來（= 複製鈕那份：使用說明 + {brief, creative} JSON），讓 GPT 自行依
+    # composition_prompt 的 {{content.x}} 對應 content 判讀；直接呼叫 API 未帶 prompt 時，退用 JSON。
+    prompt = body.get("prompt") or json.dumps({"brief": d.get("brief"), "creative": creative}, ensure_ascii=False)
     aspect = (d.get("brief") or {}).get("aspect", "1:1")
     size = SIZE_BY_ASPECT.get(aspect, "1024x1024")
     quality = body.get("quality") or "high"
@@ -234,6 +225,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Ad Generator 看板 + 生圖")
     ap.add_argument("--data-dir", help="創意資料目錄（其下需有 creatives/），預設 ./data")
     ap.add_argument("--port", type=int, default=int(os.environ.get("PORT", 5000)))
+    ap.add_argument("--reload", action="store_true", help="開發用：改 server.py 存檔就自動重啟（仍 debug=False）")
     args = ap.parse_args()
     if args.data_dir:
         DIR_CREATIVES = os.path.join(args.data_dir, "creatives")
@@ -241,4 +233,4 @@ if __name__ == "__main__":
     print(f"創意資料目錄：{DIR_CREATIVES}", flush=True)
     print(f"生圖輸出目錄：{_images_dir()}", flush=True)
     print(f".env：{ENV_FILE}（OpenAI key{'已' if os.environ.get('OPENAI_API_KEY') else '未'}設定）\n", flush=True)
-    app.run(host="127.0.0.1", port=args.port, debug=False)
+    app.run(host="127.0.0.1", port=args.port, debug=False, use_reloader=args.reload)

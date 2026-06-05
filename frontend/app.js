@@ -139,7 +139,8 @@ createApp({
         const r = await fetch('/api/images', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: this.selectedId, index: idx }),
+          // 送的就是「複製」那份：使用說明 + {brief, creative} JSON，讓 GPT 自行判讀 {{content.x}}
+          body: JSON.stringify({ id: this.selectedId, index: idx, prompt: this.texts[idx] }),
         });
         const d = await r.json();
         if (r.ok) {
