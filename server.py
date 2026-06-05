@@ -115,6 +115,26 @@ def api_creatives_get(creative_id):
     return jsonify(d)
 
 
+@app.route("/api/creatives/<creative_id>/<int:idx>", methods=["PUT"])
+def api_creatives_update(creative_id, idx):
+    """回存單一組創意（在看板編輯文案 / content / 構圖 prompt 後存回 <id>.json）。"""
+    d = _safe_read(DIR_CREATIVES, creative_id)  # 同時驗證 id 合法（穿越則回 None）
+    if d is None:
+        return jsonify({"error": "找不到該創意"}), 404
+    creatives = d.get("creatives") or []
+    if idx < 0 or idx >= len(creatives):
+        return jsonify({"error": "index 超出範圍"}), 400
+    body = request.get_json(silent=True) or {}
+    creative = body.get("creative")
+    if not isinstance(creative, dict):
+        return jsonify({"error": "creative 需為物件"}), 400
+    creatives[idx] = creative
+    d["creatives"] = creatives
+    with open(os.path.join(DIR_CREATIVES, creative_id + ".json"), "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False, indent=2)
+    return jsonify({"ok": True})
+
+
 # ---------- 設定（API key）----------
 
 

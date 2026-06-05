@@ -37,19 +37,37 @@
 
 <div id="app" class="ds-app" v-cloak>
 
-  <!-- HEADER -->
-  <header class="border-b border-white/[0.06]">
-    <div class="max-w-6xl mx-auto px-6 py-7 flex items-start justify-between gap-4">
-      <div>
-        <h1 class="ds-title text-2xl font-semibold">Ad Generator</h1>
-        <p class="ds-muted text-sm mt-1">
-          素材由 <code class="text-[#8a8f98]">generate-creatives</code> skill 產生。可一鍵複製
-          <code class="text-[#8a8f98]">composition_prompt</code>，或設定 API key 後直接「生圖」。
-        </p>
+  <!-- HEADER：頂部導覽列 + Hero banner -->
+  <header class="relative border-b border-white/[0.06] overflow-hidden">
+
+    <!-- 導覽列 -->
+    <nav class="relative z-10 max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-2.5">
+        <span class="grid place-items-center w-8 h-8 rounded-lg text-white font-bold text-sm shrink-0"
+              style="background: linear-gradient(135deg, var(--accent), var(--accent-bright));">A</span>
+        <span class="ds-title font-semibold tracking-tight">Ad Generator</span>
       </div>
       <button @click="openSettings" class="ds-btn ds-btn--ghost text-sm px-3 py-2 shrink-0" title="設定 OpenAI API key">
         ⚙ 設定<span v-if="keySet" class="ds-badge ml-2">key ✓</span>
       </button>
+    </nav>
+
+    <!-- Hero banner -->
+    <div class="relative z-10 max-w-3xl mx-auto px-6 pt-10 pb-14 text-center">
+      <span class="ds-badge inline-flex items-center gap-2 mb-6">
+        <span class="w-1.5 h-1.5 rounded-full"
+              style="background: var(--accent-bright); box-shadow: 0 0 8px var(--accent-bright);"></span>
+        gpt-image-2 生圖已就緒
+      </span>
+      <h1 class="text-4xl sm:text-5xl font-bold leading-[1.12] tracking-tight">
+        把品牌 brief 變成<br />
+        <span class="bg-clip-text text-transparent"
+              style="background-image: linear-gradient(100deg, #8e98ec, #aab1ff);">可投放的廣告素材</span>
+      </h1>
+      <p class="text-base mt-5 max-w-xl mx-auto leading-relaxed" style="color: var(--fg);">
+        文案 + 構圖 prompt 一次多組；設定 API key 後可直接生成主視覺。素材由
+        <code style="color: var(--fg);">generate-creatives</code> skill 產生。
+      </p>
     </div>
   </header>
 
@@ -57,10 +75,10 @@
 
     <!-- 產出選擇列 -->
     <div class="flex flex-wrap items-center gap-3 mb-6">
-      <span class="ds-label">產出</span>
+      <span class="ds-label">文案選擇</span>
       <select v-if="sets.length" v-model="selectedId" @change="select(selectedId)" class="ds-select">
         <option v-for="s in sets" :key="s.id" :value="s.id">
-          {{ (s.brief && s.brief.brand_name) || s.id }} · {{ s.count }} 組{{ s.mode==='copy_only' ? '（補構圖）' : '' }}
+          {{ (s.brief && s.brief.brand_name + '-' + s.brief.offer) || s.id }} · {{ s.count }} 組{{ s.mode==='copy_only' ? '（補構圖）' : '' }}
         </option>
       </select>
       <span v-if="!sets.length" class="ds-muted text-sm">
@@ -71,7 +89,13 @@
     <!-- brief 面板 -->
     <div v-if="current && current.brief" class="ds-surface p-4 mb-6 text-sm"
          style="border-color: var(--border-accent); background: rgba(94,106,210,0.06);">
-      <div class="ds-label mb-2">品牌 brief</div>
+      <div class="flex items-center justify-between gap-3 mb-2">
+        <div class="ds-label">品牌 brief</div>
+        <button @click="openBulkConfirm" :disabled="bulkRunning"
+                class="ds-btn ds-btn--primary text-xs px-3 py-1.5 shrink-0">
+          {{ bulkRunning ? ('生成中… ' + bulkDone + '/' + current.creatives.length) : '一鍵生成全部圖' }}
+        </button>
+      </div>
       <div class="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2">
         <div><div class="ds-muted text-xs">品牌</div>{{ current.brief.brand_name || '—' }}</div>
         <div v-if="current.brief.product"><div class="ds-muted text-xs">產品</div>{{ current.brief.product }}</div>
@@ -104,6 +128,10 @@
             <span v-if="c.funnel_stage" class="ds-badge">{{ c.funnel_stage }}</span>
           </div>
           <div class="flex items-center gap-1.5 shrink-0">
+            <button @click="saveCreative(idx)" :disabled="savingIdx === idx"
+                    class="ds-btn ds-btn--ghost text-xs px-2.5 py-1">
+              {{ savedIdx === idx ? '✓ 已存' : (savingIdx === idx ? '儲存中…' : '儲存') }}
+            </button>
             <button @click="generateImage(idx)" :disabled="gen[idx] && gen[idx].loading"
                     class="ds-btn ds-btn--secondary text-xs px-2.5 py-1">
               {{ gen[idx] && gen[idx].loading ? '生圖中…' : '生圖' }}
@@ -114,26 +142,33 @@
           </div>
         </div>
 
-        <!-- 文案（貼文用） -->
+        <!-- 文案（貼文用，可編輯） -->
         <div v-if="c.copy" class="space-y-1.5">
           <div class="ds-label">文案（貼文用）</div>
-          <div v-if="c.copy.headline" class="font-semibold">{{ c.copy.headline }}</div>
-          <div v-if="c.copy.primary_text" class="text-sm whitespace-pre-wrap ds-muted">{{ c.copy.primary_text }}</div>
-          <span v-if="c.copy.cta" class="ds-btn ds-btn--secondary text-xs pointer-events-none mt-1">{{ c.copy.cta }}</span>
+          <input v-model="c.copy.headline" placeholder="標題 headline"
+                 class="ds-input w-full text-sm font-semibold" />
+          <textarea v-model="c.copy.primary_text" rows="3" placeholder="內文 primary_text"
+                    class="ds-input w-full text-sm" style="resize: vertical;"></textarea>
+          <input v-model="c.copy.cta" placeholder="CTA 按鈕文字"
+                 class="ds-input w-full text-sm" />
         </div>
 
-        <!-- 圖中文字 content -->
+        <!-- 圖中文字 content（可編輯） -->
         <div v-if="c.content">
           <div class="ds-label mb-1.5">圖中文字</div>
-          <div class="flex flex-wrap gap-1.5">
-            <span v-for="(v, k) in c.content" :key="k" class="ds-badge">{{ k }}：{{ v }}</span>
+          <div class="space-y-1.5">
+            <div v-for="(v, k) in c.content" :key="k" class="flex items-center gap-2">
+              <span class="ds-muted text-xs w-20 shrink-0">{{ k }}</span>
+              <input v-model="c.content[k]" class="ds-input w-full text-sm" />
+            </div>
           </div>
         </div>
 
-        <!-- 構圖 prompt -->
-        <div v-if="c.composition_prompt">
+        <!-- 構圖 prompt（可編輯） -->
+        <div v-if="c.composition_prompt !== undefined && c.composition_prompt !== null">
           <div class="ds-label mb-1.5">構圖 prompt</div>
-          <div class="ds-surface ds-scroll p-3 text-sm whitespace-pre-wrap max-h-56 overflow-auto">{{ c.composition_prompt }}</div>
+          <textarea v-model="c.composition_prompt" rows="6"
+                    class="ds-input ds-scroll w-full text-sm" style="resize: vertical;"></textarea>
         </div>
 
         <!-- 生成的主視覺（img 一律掛載以探測既有圖，靠 @load/@error 顯隱） -->
@@ -173,6 +208,24 @@
         <button @click="saveKey" :disabled="savingKey" class="ds-btn ds-btn--primary text-sm px-3 py-1.5">
           {{ savingKey ? '儲存中…' : '儲存' }}
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 大量生成確認 -->
+  <div v-if="showBulkConfirm" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="ds-backdrop absolute inset-0" @click="showBulkConfirm = false"></div>
+    <div class="ds-modal relative w-full max-w-md p-6 space-y-4">
+      <h2 class="ds-title text-lg font-semibold">確定要大量生成吼？</h2>
+      <p class="text-sm leading-relaxed" style="color: var(--fg);">
+        這會對 OpenAI 逐張計費，這批共
+        <b>{{ current && current.creatives ? current.creatives.length : 0 }}</b> 張。<br />
+        如果不想多花錢，其實你也可以按各組的「複製」，把 prompt 自行貼到
+        <b>ChatGPT</b>、<b>Gemini</b> 等 AI 生圖。
+      </p>
+      <div class="flex items-center justify-end gap-2">
+        <button @click="showBulkConfirm = false" class="ds-btn ds-btn--ghost text-sm px-3 py-1.5">取消，我自己複製去生</button>
+        <button @click="runBulk" class="ds-btn ds-btn--primary text-sm px-3 py-1.5">確定全部生成</button>
       </div>
     </div>
   </div>

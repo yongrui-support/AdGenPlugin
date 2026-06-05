@@ -16,10 +16,11 @@ createApp({
     return {
       sets: [],         // /api/creatives 清單
       selectedId: '',
-      current: null,    // /api/creatives/<id> 完整內容
-      texts: [],        // 每組對應的可編輯文字（使用說明 + brief + creative）
+      current: null,    // /api/creatives/<id> 完整內容（creatives 直接以 v-model 編輯）
       loading: false,
       copiedIdx: -1,
+      savingIdx: -1,
+      savedIdx: -1,
       // 設定 / API key
       showSettings: false,
       apiKeyInput: '',
@@ -28,6 +29,10 @@ createApp({
       keyMsg: '',
       // 生圖狀態（與 creatives 對齊）：{ loading, error, bust, shown }
       gen: [],
+      // 大量生成
+      showBulkConfirm: false,
+      bulkRunning: false,
+      bulkDone: 0,
     };
   },
 
@@ -61,15 +66,12 @@ createApp({
       this.selectedId = id;
       this.loading = true;
       this.current = null;
-      this.texts = [];
       this.gen = [];
       this.copiedIdx = -1;
       try {
         const r = await fetch('/api/creatives/' + encodeURIComponent(id));
         this.current = await r.json();
-        const brief = (this.current && this.current.brief) || {};
         const creatives = this.current.creatives || [];
-        this.texts = creatives.map((c) => INSTRUCTION + JSON.stringify({ brief, creative: c }, null, 2));
         // 探測既有圖：img 一律掛載、用 @load/@error 決定是否顯示
         this.gen = creatives.map(() => ({ loading: false, error: '', bust: 0, shown: false }));
       } catch (e) {
@@ -79,13 +81,44 @@ createApp({
       }
     },
 
+    // 即時組出「使用說明 + {brief, creative}」（複製 / 生圖共用，反映目前編輯內容）
+    buildPayload(idx) {
+      const brief = (this.current && this.current.brief) || {};
+      const creative = (this.current.creatives || [])[idx];
+      return INSTRUCTION + JSON.stringify({ brief, creative }, null, 2);
+    },
+
     async copy(idx) {
       try {
-        await navigator.clipboard.writeText(this.texts[idx]);
+        await navigator.clipboard.writeText(this.buildPayload(idx));
         this.copiedIdx = idx;
         setTimeout(() => { if (this.copiedIdx === idx) this.copiedIdx = -1; }, 1500);
       } catch (e) {
         console.error('copy', e);
+      }
+    },
+
+    // 回存單組到 <id>.json
+    async saveCreative(idx) {
+      this.savingIdx = idx;
+      try {
+        const r = await fetch('/api/creatives/' + encodeURIComponent(this.selectedId) + '/' + idx, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ creative: this.current.creatives[idx] }),
+        });
+        if (r.ok) {
+          this.savedIdx = idx;
+          setTimeout(() => { if (this.savedIdx === idx) this.savedIdx = -1; }, 1500);
+        } else {
+          const d = await r.json().catch(() => ({}));
+          alert('儲存失敗：' + (d.error || r.status));
+        }
+      } catch (e) {
+        console.error('save', e);
+        alert('儲存失敗：' + e);
+      } finally {
+        this.savingIdx = -1;
       }
     },
 
@@ -140,7 +173,7 @@ createApp({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           // 送的就是「複製」那份：使用說明 + {brief, creative} JSON，讓 GPT 自行判讀 {{content.x}}
-          body: JSON.stringify({ id: this.selectedId, index: idx, prompt: this.texts[idx] }),
+          body: JSON.stringify({ id: this.selectedId, index: idx, prompt: this.buildPayload(idx) }),
         });
         const d = await r.json();
         if (r.ok) {
@@ -154,6 +187,26 @@ createApp({
       } finally {
         g.loading = false;
       }
+    },
+
+    // ----- 大量生成 -----
+    openBulkConfirm() {
+      if (!this.keySet) { this.openSettings(); return; }
+      const n = (this.current && this.current.creatives && this.current.creatives.length) || 0;
+      if (!n) return;
+      this.showBulkConfirm = true;
+    },
+
+    async runBulk() {
+      this.showBulkConfirm = false;
+      this.bulkRunning = true;
+      this.bulkDone = 0;
+      const n = (this.current.creatives || []).length;
+      for (let i = 0; i < n; i++) {
+        await this.generateImage(i);   // 逐張，避免一次轟炸 API
+        this.bulkDone++;
+      }
+      this.bulkRunning = false;
     },
   },
 }).mount('#app');
