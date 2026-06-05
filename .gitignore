@@ -14,6 +14,9 @@ data/
 # ruff 快取
 .ruff_cache/
 
+# Claude Code 本機設定/狀態（skills 在 skills/，.claude 不屬於 plugin，不進版控）
+.claude/
+
 # OS / editor
 .DS_Store
 Thumbs.db
