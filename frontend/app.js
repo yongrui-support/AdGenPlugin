@@ -227,6 +227,7 @@ createApp({
     async generateImage(idx) {
       if (!this.keySet) { this.openSettings(); return; }
       const g = this.gen[idx];
+      if (!g || g.loading) return;   // 防呆：已在生成中就忽略重複呼叫（擋同 tick 連點）
       g.loading = true;
       g.error = '';
       try {
