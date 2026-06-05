@@ -216,20 +216,17 @@
     </div>
   </div>
 
-  <!-- 大量生成確認 -->
-  <div v-if="showBulkConfirm" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-    <div class="ds-backdrop absolute inset-0" @click="showBulkConfirm = false"></div>
+  <!-- 共用確認對話框（刪除 / 大量生成等抽換內容） -->
+  <div v-if="confirmBox.show" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="ds-backdrop absolute inset-0" @click="confirmCancel"></div>
     <div class="ds-modal relative w-full max-w-md p-6 space-y-4">
-      <h2 class="ds-title text-lg font-semibold">確定要大量生成吼？</h2>
-      <p class="text-sm leading-relaxed" style="color: var(--fg);">
-        這會對 OpenAI 逐張計費，這批共
-        <b>{{ current && current.creatives ? current.creatives.length : 0 }}</b> 張。<br />
-        如果不想多花錢，其實你也可以按各組的「複製」，把 prompt 自行貼到
-        <b>ChatGPT</b>、<b>Gemini</b> 等 AI 生圖。
-      </p>
+      <h2 class="ds-title text-lg font-semibold">{{ confirmBox.title }}</h2>
+      <p class="text-sm leading-relaxed" style="color: var(--fg);" v-html="confirmBox.message"></p>
       <div class="flex items-center justify-end gap-2">
-        <button @click="showBulkConfirm = false" class="ds-btn ds-btn--ghost text-sm px-3 py-1.5">取消，我自己複製去生</button>
-        <button @click="runBulk" class="ds-btn ds-btn--primary text-sm px-3 py-1.5">確定全部生成</button>
+        <button @click="confirmCancel" class="ds-btn ds-btn--ghost text-sm px-3 py-1.5">{{ confirmBox.cancelLabel }}</button>
+        <button @click="confirmOk" class="ds-btn text-sm px-3 py-1.5"
+                :class="confirmBox.danger ? 'ds-btn--secondary' : 'ds-btn--primary'"
+                :style="confirmBox.danger ? 'color:#e5707e;' : ''">{{ confirmBox.okLabel }}</button>
       </div>
     </div>
   </div>

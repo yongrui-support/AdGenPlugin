@@ -19,6 +19,7 @@ import glob
 import json
 import os
 import sys
+import uuid
 
 # 強制 stdout/stderr 使用 UTF-8（避免 Windows cp950/cp1252 出現 UnicodeEncodeError）
 try:
@@ -108,10 +109,12 @@ def api_creatives_list():
 
 @app.route("/api/creatives/<creative_id>")
 def api_creatives_get(creative_id):
-    """單一創意產出的完整內容。"""
+    """單一創意產出的完整內容（順手補齊每組的 uid，生成圖以 uid 命名）。"""
     d = _safe_read(DIR_CREATIVES, creative_id)
     if d is None:
         return jsonify({"error": "找不到該創意"}), 404
+    if _ensure_uids(d):
+        _save_batch(creative_id, d)
     return jsonify(d)
 
 
@@ -127,10 +130,10 @@ def api_creatives_modify(creative_id, idx):
         return jsonify({"error": "index 超出範圍"}), 400
 
     if request.method == "DELETE":
-        del creatives[idx]
+        removed = creatives.pop(idx)
         d["creatives"] = creatives
         _save_batch(creative_id, d)
-        _shift_images_after_delete(creative_id, idx, n)  # 後面的圖往前搬一格，維持 index 對齊
+        _remove_image(removed.get("uid") if isinstance(removed, dict) else None)  # uid 命名，刪這張即可
         return jsonify({"ok": True, "count": len(creatives)})
 
     # PUT：回存編輯後的內容
@@ -149,17 +152,24 @@ def _save_batch(creative_id, d):
         json.dump(d, f, ensure_ascii=False, indent=2)
 
 
-def _shift_images_after_delete(creative_id, idx, old_count):
-    """刪掉 idx 的圖，並把 idx+1..old_count-1 的圖各往前移一格（檔名 index 對齊新陣列）。"""
-    images_dir = _images_dir()
+def _ensure_uids(d):
+    """確保每組有穩定 uid（生成圖以 uid 命名 → 刪除/排序都不影響對應）。回傳是否有變更。"""
+    changed = False
+    for c in d.get("creatives") or []:
+        if isinstance(c, dict) and not c.get("uid"):
+            c["uid"] = uuid.uuid4().hex[:12]
+            changed = True
+    return changed
+
+
+def _remove_image(uid):
+    """刪除某 uid 的生成圖（其餘 uid 的圖不受影響）。"""
+    if not uid:
+        return
     try:
-        cur = os.path.join(images_dir, f"{creative_id}__{idx}.png")
-        if os.path.isfile(cur):
-            os.remove(cur)
-        for j in range(idx + 1, old_count):
-            src = os.path.join(images_dir, f"{creative_id}__{j}.png")
-            if os.path.isfile(src):
-                os.replace(src, os.path.join(images_dir, f"{creative_id}__{j - 1}.png"))
+        p = os.path.join(_images_dir(), uid + ".png")
+        if os.path.isfile(p):
+            os.remove(p)
     except Exception:
         pass
 
@@ -240,6 +250,10 @@ def api_generate_image():
     if not isinstance(idx, int) or idx < 0 or idx >= len(creatives):
         return jsonify({"error": "index 超出範圍"}), 400
     creative = creatives[idx]
+    if not creative.get("uid"):  # 舊資料補 uid 並存回
+        _ensure_uids(d)
+        _save_batch(cid, d)
+    uid = creative["uid"]
     # prompt 由前端帶來（= 複製鈕那份：使用說明 + {brief, creative} JSON），讓 GPT 自行依
     # composition_prompt 的 {{content.x}} 對應 content 判讀；直接呼叫 API 未帶 prompt 時，退用 JSON。
     prompt = body.get("prompt") or json.dumps({"brief": d.get("brief"), "creative": creative}, ensure_ascii=False)
@@ -254,17 +268,17 @@ def api_generate_image():
         return jsonify({"error": "模型未回傳圖片"}), 502
     images_dir = _images_dir()
     os.makedirs(images_dir, exist_ok=True)
-    with open(os.path.join(images_dir, f"{cid}__{idx}.png"), "wb") as f:
+    with open(os.path.join(images_dir, uid + ".png"), "wb") as f:
         f.write(base64.b64decode(b64))
-    return jsonify({"ok": True, "url": f"/api/images/{cid}/{idx}"})
+    return jsonify({"ok": True, "url": f"/api/images/{uid}"})
 
 
-@app.route("/api/images/<cid>/<int:idx>")
-def api_get_image(cid, idx):
-    """取用已生成的主視覺 PNG。"""
-    if not cid or cid != os.path.basename(cid) or ".." in cid:
-        return jsonify({"error": "bad id"}), 404
-    path = os.path.join(_images_dir(), f"{cid}__{idx}.png")
+@app.route("/api/images/<uid>")
+def api_get_image(uid):
+    """取用已生成的主視覺 PNG（以 creative uid 命名）。"""
+    if not uid or uid != os.path.basename(uid) or ".." in uid:
+        return jsonify({"error": "bad uid"}), 404
+    path = os.path.join(_images_dir(), uid + ".png")
     if not os.path.isfile(path):
         return jsonify({"error": "尚未生成"}), 404
     return send_file(path, mimetype="image/png")

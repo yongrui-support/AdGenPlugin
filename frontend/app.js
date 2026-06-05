@@ -30,8 +30,10 @@ createApp({
       keyMsg: '',
       // 生圖狀態（與 creatives 對齊）：{ loading, error, bust, shown }
       gen: [],
+      imgVersion: 0,   // 每次重載 +1，讓圖片網址改變、避開瀏覽器快取殘留
+      // 共用確認對話框（刪除 / 大量生成共用，抽換內容）
+      confirmBox: { show: false, title: '', message: '', okLabel: '確定', cancelLabel: '取消', danger: false },
       // 大量生成
-      showBulkConfirm: false,
       bulkRunning: false,
       bulkDone: 0,
     };
@@ -68,6 +70,7 @@ createApp({
       this.loading = true;
       this.current = null;
       this.gen = [];
+      this.imgVersion++;   // 換批/重載 → 圖片網址改變，避免舊圖快取殘留
       this.copiedIdx = -1;
       try {
         const r = await fetch('/api/creatives/' + encodeURIComponent(id));
@@ -123,9 +126,42 @@ createApp({
       }
     },
 
+    // ----- 共用確認對話框 -----
+    askConfirm(opts) {
+      this.confirmBox = {
+        show: true,
+        title: opts.title || '確認',
+        message: opts.message || '',
+        okLabel: opts.okLabel || '確定',
+        cancelLabel: opts.cancelLabel || '取消',
+        danger: !!opts.danger,
+      };
+      this._confirmAction = opts.onConfirm || null;   // 動作放實例屬性，不進 reactive data
+    },
+    confirmOk() {
+      const fn = this._confirmAction;
+      this.confirmBox.show = false;
+      this._confirmAction = null;
+      if (fn) fn();
+    },
+    confirmCancel() {
+      this.confirmBox.show = false;
+      this._confirmAction = null;
+    },
+
     // 刪除單組（會直接從 JSON 移除，無法復原）
-    async deleteCreative(idx) {
-      if (!confirm('確定刪除這組創意？會直接從 JSON 移除，無法復原。')) return;
+    deleteCreative(idx) {
+      this.askConfirm({
+        title: '確定刪除這組創意？',
+        message: '會直接從 <code>data/creatives</code> 的 JSON 移除這組，<b>無法復原</b>。',
+        okLabel: '確定刪除',
+        cancelLabel: '取消',
+        danger: true,
+        onConfirm: () => this._doDelete(idx),
+      });
+    },
+
+    async _doDelete(idx) {
       this.deletingIdx = idx;
       try {
         const r = await fetch('/api/creatives/' + encodeURIComponent(this.selectedId) + '/' + idx, {
@@ -183,9 +219,11 @@ createApp({
 
     // ----- 生圖 -----
     imgSrc(idx) {
+      const c = ((this.current && this.current.creatives) || [])[idx];
       const g = this.gen[idx];
-      if (!g) return '';
-      return '/api/images/' + encodeURIComponent(this.selectedId) + '/' + idx + '?v=' + g.bust;
+      if (!c || !c.uid || !g) return '';
+      // 以 uid 命名 → 刪除/排序都不影響對應；?v 仍用於重生時 cache-bust
+      return '/api/images/' + c.uid + '?v=' + this.imgVersion + '_' + g.bust;
     },
 
     async generateImage(idx) {
@@ -219,11 +257,17 @@ createApp({
       if (!this.keySet) { this.openSettings(); return; }
       const n = (this.current && this.current.creatives && this.current.creatives.length) || 0;
       if (!n) return;
-      this.showBulkConfirm = true;
+      this.askConfirm({
+        title: '確定要大量生成吼？',
+        message: '這會對 OpenAI 逐張計費，這批共 <b>' + n + '</b> 張。<br>' +
+          '如果不想多花錢，其實你也可以按各組的「複製」，把 prompt 自行貼到 <b>ChatGPT</b>、<b>Gemini</b> 等 AI 生圖。',
+        okLabel: '確定全部生成',
+        cancelLabel: '取消，我自己複製去生',
+        onConfirm: () => this.runBulk(),
+      });
     },
 
     async runBulk() {
-      this.showBulkConfirm = false;
       this.bulkRunning = true;
       this.bulkDone = 0;
       const n = (this.current.creatives || []).length;
