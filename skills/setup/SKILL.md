@@ -1,13 +1,11 @@
 ---
 name: setup
 description: 一鍵安裝 Ad Generator 的執行環境 —— 偵測作業系統，缺套件管理器就裝（macOS → Homebrew、Windows → Scoop），再裝 uv，最後 uv sync 安裝相依。第一次使用、或 serve/generate 提示缺 uv 時用。
-disable-model-invocation: true
 ---
 
 # setup
 
-安裝執行環境。**會安裝軟體**，所以只由使用者以 `/ad-generator:setup` 觸發（不自動執行）。
-每個安裝動作前先簡短告知使用者要做什麼。
+安裝執行環境。**會安裝軟體**，每個安裝動作前先簡短告知使用者要做什麼、徵得同意再跑（bash 本來就會要權限）。
 
 ## 步驟
 
