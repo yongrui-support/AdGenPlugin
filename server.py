@@ -2,7 +2,7 @@
 Ad Generator — Backend（創意檢視看板 + 生圖）
 
 負責：
-1. 服務前端 index.html，並以唯讀方式提供 <data-dir>/creatives 底下的廣告素材 JSON 給 UI 檢視。
+1. 服務前端 index.html，提供 <data-dir>/creatives 底下的廣告素材 JSON 給 UI 檢視 / 編輯 / 刪除。
 2. 設定：把使用者在看板填入的 OpenAI API key 寫進專案根目錄 .env（永不回傳前端、只綁 127.0.0.1）。
 3. 生圖：用 OpenAI Responses API 的 image_generation 工具（gpt-image-2），把某組創意的
    composition_prompt（先把 {{content.x}} 換成實字）生成主視覺，存到 <data-dir>/images。

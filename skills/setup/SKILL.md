@@ -46,4 +46,4 @@ uv sync --project "<PLUGIN_DIR>"
 ### 4. 回報
 告訴使用者環境就緒，接著可：
 - `/ad-generator:generate-creatives` 產廣告素材（存到目前專案的 `data/creatives/`）
-- `/ad-generator:serve` 開唯讀看板檢視
+- `/ad-generator:serve` 開看板檢視 / 編輯 / 生圖 / 刪除
