@@ -30,7 +30,6 @@ createApp({
       keyMsg: '',
       // 生圖狀態（與 creatives 對齊）：{ loading, error, bust, shown }
       gen: [],
-      imgVersion: 0,   // 每次重載 +1，讓圖片網址改變、避開瀏覽器快取殘留
       // 共用確認對話框（刪除 / 大量生成共用，抽換內容）
       confirmBox: { show: false, title: '', message: '', okLabel: '確定', cancelLabel: '取消', danger: false },
       // 大量生成
@@ -70,7 +69,6 @@ createApp({
       this.loading = true;
       this.current = null;
       this.gen = [];
-      this.imgVersion++;   // 換批/重載 → 圖片網址改變，避免舊圖快取殘留
       this.copiedIdx = -1;
       try {
         const r = await fetch('/api/creatives/' + encodeURIComponent(id));
@@ -222,8 +220,8 @@ createApp({
       const c = ((this.current && this.current.creatives) || [])[idx];
       const g = this.gen[idx];
       if (!c || !c.uid || !g) return '';
-      // 以 uid 命名 → 刪除/排序都不影響對應；?v 仍用於重生時 cache-bust
-      return '/api/images/' + c.uid + '?v=' + this.imgVersion + '_' + g.bust;
+      // uid 命名 → 網址穩定對應該組；?v=bust 只在「重生同一張」時改變以破快取
+      return '/api/images/' + c.uid + '?v=' + g.bust;
     },
 
     async generateImage(idx) {
