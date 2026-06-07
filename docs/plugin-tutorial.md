@@ -160,13 +160,37 @@ uv run --project "<PLUGIN_DIR>" python "<PLUGIN_DIR>/server.py" --data-dir "$(pw
 
 ## 5. 發佈與安裝
 
+### 基本指令速查
 ```text
-# 別人安裝
-/plugin marketplace add <你的-github>/<repo>
-/plugin install ad-generator@ad-generator
+# Marketplace（商店目錄）
+/plugin marketplace add <帳號>/<repo>         # 加入商店（git clone 到 cache，預設追 main）
+/plugin marketplace add <帳號>/<repo>#<ref>   # 釘分支 / tag / commit（例：#v1.2.0、#abc1234）
+/plugin marketplace list                      # 列出已加入的商店
+/plugin marketplace update [名稱]             # 刷新商店目錄（去 cache git pull）
+/plugin marketplace remove <名稱>             # 移除商店
+
+# Plugin（單一外掛）
+/plugin install <plugin>@<marketplace>        # 安裝（例：ad-generator@ad-generator）
+/plugin                                        # 互動選單：瀏覽 / 更新 / 啟用停用
+/plugin uninstall <plugin>                    # 解除安裝
+/reload-plugins                                # 重新載入（改動後生效）
+
+# 開發測試（不必 GitHub）
+claude --plugin-dir .                          # 直接把當前 repo 當 plugin 載入
 ```
-- `version` 有填 → 使用者要等你 bump 才更新；沒填 → 用 git commit SHA（每次 commit 都算新版）。
-- 要分發就 **push 上 GitHub**（`marketplace add` 吃 `<帳號>/<repo>` 或 git URL）。
+全部可逆：`/plugin uninstall` + `/plugin marketplace remove` 就乾淨移除；cache 在 `~/.claude/plugins/`。
+
+### 更新機制（我們實測驗證過，別搞混）
+**唯一驅動更新的是 `plugin.json` 的 `version`，而且改動一定要進 `main`。** 發版 SOP：
+
+1. **bump `.claude-plugin/plugin.json` 的 `version`**（如 1.0.0 → 1.0.1）。version 沒改 → 即使推了新碼也被當「同版」、不會套用。（不寫 version 則改用 commit SHA，每次 commit 都算新版。）
+2. **合併到 `main` 並 push**：marketplace 預設追 repo 的預設分支（main）。只 push 個人分支 `<name>_dev`（即使帶了新 version）**不會被抓**。
+3. 使用者端：`/plugin marketplace update` → cache `git pull` main 取得新版 → `/plugin` 更新（或開了 auto-update 會自動）。
+
+容易混的三點：
+- **`marketplace.json` 的 `version` 是幌子** —— 純標籤，**不影響任何更新**。自產自銷型常順手把它對齊 plugin 版號（純美觀）；聚合別人 plugin 的商店則只在自己變動時才動它。
+- **git pull 不看 version**：只要 main 有新 commit，pull 就會拉；version 只在 pull 完「要不要套用」時才比對。
+- ⚠️ 已知 bug（[#10182](https://github.com/anthropics/claude-code/issues/10182)）：`/plugin marketplace update` 有時不會真的 `git pull`、只更新時間戳。手動解：`git -C ~/.claude/plugins/marketplaces/<名> pull origin main` 再 `/reload-plugins`。
 
 ---
 
@@ -198,6 +222,7 @@ uv run --project "<PLUGIN_DIR>" python "<PLUGIN_DIR>/server.py" --data-dir "$(pw
 - [ ] `.claude-plugin/marketplace.json`（`source: "./"`）
 - [ ] `skills/<name>/SKILL.md`（name = 資料夾名；description 寫清楚觸發情境）
 - [ ] 會裝軟體/有副作用的 skill → `disable-model-invocation: true`
+- [ ] 發版：bump `plugin.json` 的 `version` + **合進 `main`** + push（只 push 個人分支不會被抓；`marketplace.json` 版號不影響更新）
 - [ ] 要跑包內程式 → 用「Base directory」推 plugin 根，**勿**靠 `$CLAUDE_PLUGIN_ROOT`/cwd
 - [ ] 夾帶 server → 資料目錄用 `--data-dir` 指向使用者專案
 - [ ] **真的安裝/`--plugin-dir` 跑過一輪**（不只 import）
