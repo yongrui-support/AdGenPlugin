@@ -1,12 +1,13 @@
 ---
 name: serve
-description: 啟動 Ad Generator 唯讀看板（Flask，http://localhost:5000）檢視 generate-creatives 產出的素材。會用 skill 自己的位置定位 plugin 內的 server.py，並讀取你目前專案的 data/creatives。當被要求執行、啟動、開看板或檢視創意時使用。
+description: 啟動 Ad Generator 的廣告 WebUI / 看板（Flask，http://localhost:5000）來檢視、編輯、刪除 generate-creatives 產出的廣告素材，並可填入 OpenAI key 後直接生成主視覺。當使用者說「開啟廣告 WebUI / 打開廣告介面 / 開看板 / 啟動看板 / 開網頁看素材 / 把 server 跑起來 / 啟動服務」等，觸發。會用 skill 自己的位置定位 plugin 內的 server.py，並讀取你目前專案的 data/creatives。
 ---
 
 # serve
 
-啟動唯讀看板。看板顯示**目前專案 `./data/creatives`** 底下的創意產出（generate-creatives 寫在那）。
-plugin 內含 Flask 後端與 Vue 前端，後端只服務前端 + 唯讀資料端點。
+啟動看板。看板顯示**目前專案 `./data/creatives`** 底下的創意產出（generate-creatives 寫在那），
+可檢視、**編輯回存、刪除**，也能填入 OpenAI key 後直接呼叫 gpt-image-2 生成主視覺（存到 `./data/images`）。
+plugin 內含 Flask 後端與 Vue 前端；key 只存後端 `.env`、server 只綁 127.0.0.1。
 
 ## 步驟
 
@@ -35,4 +36,5 @@ uv run --project "<PLUGIN_DIR>" python "<PLUGIN_DIR>/server.py" --data-dir "$(pw
 ## 注意
 
 - 看板沒資料 = 還沒產 → 先用 `/ad-generator:generate-creatives`。
-- 預設 port 5000，可加 `--port`；只綁 `127.0.0.1`、`debug=False`。
+- 要在看板生圖，需先在右上「設定」填 OpenAI API key（存到專案根 `.env`，已 gitignore）。
+- 預設 port 5000，可加 `--port`；只綁 `127.0.0.1`、`debug=False`（開發可加 `--reload`）。

@@ -123,6 +123,41 @@ uv run --project "<PLUGIN_DIR>" python "<PLUGIN_DIR>/server.py" --data-dir "$(pw
 
 ---
 
+## 4.5 補充：包 MCP server（給 Claude 用的工具，跟 webui 不同）
+
+> 先分清楚：**webui（HTTP server）是給「人」開瀏覽器看的；MCP server 是給「Claude」當工具用的。** 兩者不同。
+> 本專案的看板是前者；若哪天想讓 Claude 直接讀/操作 `data/creatives`（不開瀏覽器），那才是 MCP 的場景。
+
+### 兩種放法（擇一）
+**A. plugin 根放 `.mcp.json`（推薦，多 server 時清楚）**
+```json
+{
+  "mcpServers": {
+    "my-server": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/servers/server.js",
+      "args": ["--config", "${CLAUDE_PLUGIN_ROOT}/config.json"],
+      "env": { "FOO": "${SOME_ENV}" }
+    }
+  }
+}
+```
+**B. 直接寫進 `plugin.json` 的 `mcpServers` 欄位**（單一 server 較簡單）。
+
+### 設定形狀
+- **stdio（本機程序）**：`command` + `args` + `env` + `cwd`(可選)。
+- **遠端**：`"type": "http" | "sse" | "ws"` + `url` + `headers`。
+
+### 🔑 關鍵（跟 §4 的坑相反）
+**`${CLAUDE_PLUGIN_ROOT}` 在 MCP 的 JSON 設定裡是可靠的** —— 壞掉的只有「skill markdown 的 bash」。
+所以 **MCP 要定位包內檔案，直接用 `${CLAUDE_PLUGIN_ROOT}` 即可，不必像 serve/setup 那樣繞 base 目錄。**
+
+### 行為
+- plugin 啟用時自動起；**第一次需使用者授權**（安全）。
+- 工具自動發現，命名 `mcp__plugin_<plugin>_<server>__<tool>`，`/mcp` 看得到，Claude 直接能用（不用打 slash）。
+- 可包多個 server；與專案自己的 `.mcp.json` 各自獨立（同名時 project 優先）。
+
+---
+
 ## 5. 發佈與安裝
 
 ```text

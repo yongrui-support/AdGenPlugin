@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "ad-generator",
-      "description": "把品牌 brief 變成可投放的廣告素材（文案 + GPT 生圖構圖 prompt），附唯讀看板與環境安裝 skill。",
+      "description": "把品牌 brief 變成可投放的廣告素材（文案 + GPT 生圖構圖 prompt），附看板（檢視/編輯/生圖/刪除）與環境安裝 skill。",
       "source": "./"
     }
   ]

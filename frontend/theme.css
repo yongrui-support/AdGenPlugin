@@ -172,6 +172,13 @@ body {
 .ds-btn--ghost { background: transparent; color: var(--fg-muted); }
 .ds-btn--ghost:hover { background: var(--surface); color: var(--fg); }
 
+/* disabled：變淡 + 鎖定游標，並取消 hover/active 反應，讓「按不動」看得出來 */
+.ds-btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+.ds-btn:disabled:active { transform: none; }
+.ds-btn--primary:disabled:hover { background: var(--accent); }
+.ds-btn--secondary:disabled:hover { background: var(--surface); }
+.ds-btn--ghost:disabled:hover { background: transparent; color: var(--fg-muted); }
+
 /* ============================================================
    Inputs / Select
    ============================================================ */
