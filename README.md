@@ -31,7 +31,7 @@ OpenAI key 後直接呼叫 **gpt-image-2** 生成主視覺。
 |---|---|
 | `/ad-generator:setup` | **第一次先跑這個**：偵測 OS → macOS 裝 Homebrew、Windows 裝 Scoop → 裝 uv → 安裝相依 |
 | `/ad-generator:generate-creatives` | 把品牌 brief 變成 N 組「文案 + 構圖 prompt」，存到目前專案 `data/creatives/` |
-| `/ad-generator:serve` | 啟動看板 → http://localhost:5000，檢視/編輯/生圖/刪除創意 |
+| `/ad-generator:serve` | 啟動看板 → http://localhost:5050，檢視/編輯/生圖/刪除創意 |
 
 ## 用法
 
@@ -45,7 +45,7 @@ OpenAI key 後直接呼叫 **gpt-image-2** 生成主視覺。
 
 ```bash
 uv sync                        # 建立 .venv + 安裝相依
-uv run python server.py        # 看板 → http://localhost:5000（讀 ./data；--reload 開發自動重啟）
+uv run python server.py        # 看板 → http://localhost:5050（讀 ./data；--reload 開發自動重啟）
 claude --plugin-dir ./         # 以 plugin 形式載入 skills（/ad-generator:<skill>）
 ```
 

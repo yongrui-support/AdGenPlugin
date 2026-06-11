@@ -10,7 +10,7 @@ Ad Generator — Backend（創意檢視看板 + 生圖）
 執行：
     uv run python server.py                         # 創意資料 = ./data，.env = ./
     uv run python server.py --data-dir /path/data   # 指定資料目錄（plugin 安裝後指向使用者專案）
-接著開啟 http://localhost:5000
+接著開啟 http://localhost:5050
 """
 
 import argparse
@@ -363,7 +363,8 @@ def api_get_image(uid):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Ad Generator 看板 + 生圖")
     ap.add_argument("--data-dir", help="創意資料目錄（其下需有 creatives/），預設 ./data")
-    ap.add_argument("--port", type=int, default=int(os.environ.get("PORT", 5000)))
+    # 預設 5050：macOS 的 AirPlay 接收器佔 5000，避開它（可用 --port 或 PORT 環境變數覆寫）
+    ap.add_argument("--port", type=int, default=int(os.environ.get("PORT", 5050)))
     ap.add_argument("--reload", action="store_true", help="開發用：改 server.py 存檔就自動重啟（仍 debug=False）")
     args = ap.parse_args()
     if args.data_dir:
@@ -373,4 +374,8 @@ if __name__ == "__main__":
     print(f"生圖輸出目錄：{_images_dir()}", flush=True)
     print(f".env：{ENV_FILE}（OpenAI key{'已' if os.environ.get('OPENAI_API_KEY') else '未'}設定）\n", flush=True)
     # threaded=True：並行生圖時能同時處理多個 /api/images 請求（每請求各自呼叫 OpenAI）
-    app.run(host="127.0.0.1", port=args.port, debug=False, threaded=True, use_reloader=args.reload)
+    try:
+        app.run(host="127.0.0.1", port=args.port, debug=False, threaded=True, use_reloader=args.reload)
+    except OSError as e:
+        print(f"\n啟動失敗：port {args.port} 無法綁定（{e}），請改用 --port 指定別的 port。", flush=True)
+        sys.exit(1)

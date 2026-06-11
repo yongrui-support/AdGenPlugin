@@ -21,11 +21,13 @@ PLUGIN_DIR = <base directory>/../..
 先 `uv --version` 檢查；已存在就跳到步驟 3。否則依 OS：
 
 - **macOS**（`uname` = Darwin）：
-  - 沒 `brew` → 裝 Homebrew：
+  - 沒 `brew` → 裝 Homebrew。**注意**：安裝程式會互動式要求密碼，請使用者**自己在終端機跑**這行（建議用 `!` 前綴在 session 內執行）：
     ```bash
     /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
     ```
-  - 裝 uv：`brew install uv`
+  - 裝 uv：`brew install uv`。**Apple Silicon 注意**：剛裝完 Homebrew 的 shell 裡 `brew` 可能不在 PATH
+    （M 系列裝在 `/opt/homebrew/bin`）——找不到就先 `eval "$(/opt/homebrew/bin/brew shellenv)"`
+    或直接用絕對路徑 `/opt/homebrew/bin/brew install uv`。
 - **Windows**（用 PowerShell）：
   - 沒 `scoop` → 裝 Scoop：
     ```powershell

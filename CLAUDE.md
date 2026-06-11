@@ -27,7 +27,7 @@
 
 ```bash
 uv sync                       # 建立 .venv + 安裝相依
-uv run python server.py       # 啟動看板 → http://localhost:5000
+uv run python server.py       # 啟動看板 → http://localhost:5050
 uv run python server.py --reload   # 開發用：改 server.py 自動重啟（仍 debug=False）
 ```
 
