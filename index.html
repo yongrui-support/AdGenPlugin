@@ -198,7 +198,7 @@
           <div v-if="genOf(c).loading"
                class="ds-surface rounded-lg animate-pulse flex items-center justify-center text-center px-4"
                :style="{ aspectRatio: (genOf(c).aspect || '1:1').replace(':', ' / ') }">
-            <span class="ds-muted text-xs leading-relaxed">🎨 生成中…約 10–30 秒<br>（可重整、切換頁面，完成會自動出現）</span>
+            <span class="ds-muted text-xs leading-relaxed">🎨 生成中…<br>（可重整、切換頁面，完成會自動出現）</span>
           </div>
           <img v-else :src="imgSrc(c)" alt="主視覺"
                class="w-full rounded-lg border border-white/[0.06]" />
