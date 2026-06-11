@@ -76,7 +76,7 @@
     <!-- 產出選擇列 -->
     <div class="flex flex-wrap items-center gap-3 mb-6">
       <span class="ds-label">文案選擇</span>
-      <select v-if="sets.length" v-model="selectedId" @change="select(selectedId)" :disabled="bulkRunning" class="ds-select">
+      <select v-if="sets.length" v-model="selectedId" @change="select(selectedId)" class="ds-select">
         <option v-for="s in sets" :key="s.id" :value="s.id">
           {{ (s.brief && s.brief.brand_name + '-' + s.brief.offer) || s.id }} · {{ s.count }} 組{{ s.mode==='copy_only' ? '（補構圖）' : '' }}
         </option>
@@ -91,9 +91,9 @@
          style="border-color: var(--border-accent); background: rgba(94,106,210,0.06);">
       <div class="flex items-center justify-between gap-3 mb-2">
         <div class="ds-label">品牌 brief</div>
-        <button @click="openBulkConfirm" :disabled="bulkRunning"
+        <button @click="openBulkConfirm" :disabled="anyGenerating"
                 class="ds-btn ds-btn--primary text-xs px-3 py-1.5 shrink-0">
-          {{ bulkRunning ? ('生成中… ' + bulkDone + '/' + current.creatives.length) : '一鍵生成全部圖' }}
+          {{ anyGenerating ? ('生成中… 剩 ' + runningCount + ' 張') : '一鍵生成全部圖' }}
         </button>
       </div>
       <div class="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2">
@@ -118,7 +118,7 @@
     <!-- 創意卡片 -->
     <div v-if="loading" class="ds-muted py-16 text-center">載入中…</div>
     <div v-else-if="current" class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-      <div v-for="(c, idx) in current.creatives" :key="idx" class="ds-card p-5 space-y-4">
+      <div v-for="c in current.creatives" :key="c.uid" class="ds-card p-5 space-y-4">
 
         <!-- 標籤 + 複製 -->
         <div class="flex items-center justify-between gap-2">
@@ -128,21 +128,21 @@
             <span v-if="c.funnel_stage" class="ds-badge">{{ c.funnel_stage }}</span>
           </div>
           <div class="flex items-center gap-1.5 shrink-0">
-            <button @click="deleteCreative(idx)"
-                    :disabled="deletingIdx === idx || (gen[idx] && gen[idx].loading) || bulkRunning"
+            <button @click="deleteCreative(c)"
+                    :disabled="deletingUid === c.uid || genOf(c).loading"
                     class="ds-btn ds-btn--ghost text-xs px-2.5 py-1" style="color:#e5707e;" title="刪除這組">
-              {{ deletingIdx === idx ? '刪除中…' : '刪除' }}
+              {{ deletingUid === c.uid ? '刪除中…' : '刪除' }}
             </button>
-            <button @click="saveCreative(idx)" :disabled="savingIdx === idx"
+            <button @click="saveCreative(c)" :disabled="savingUid === c.uid"
                     class="ds-btn ds-btn--ghost text-xs px-2.5 py-1">
-              {{ savedIdx === idx ? '✓ 已存' : (savingIdx === idx ? '儲存中…' : '儲存') }}
+              {{ savedUid === c.uid ? '✓ 已存' : (savingUid === c.uid ? '儲存中…' : '儲存') }}
             </button>
-            <button @click="generateImage(idx)" :disabled="(gen[idx] && gen[idx].loading) || bulkRunning"
+            <button @click="generateImage(c)" :disabled="genOf(c).loading"
                     class="ds-btn ds-btn--secondary text-xs px-2.5 py-1">
-              {{ gen[idx] && gen[idx].loading ? '生圖中…' : '生圖' }}
+              {{ genOf(c).loading ? '生圖中…' : '生圖' }}
             </button>
-            <button @click="copy(idx)" class="ds-btn ds-btn--primary text-xs px-2.5 py-1">
-              {{ copiedIdx === idx ? '✓ 已複製' : '複製' }}
+            <button @click="copy(c)" class="ds-btn ds-btn--primary text-xs px-2.5 py-1">
+              {{ copiedUid === c.uid ? '✓ 已複製' : '複製' }}
             </button>
           </div>
         </div>
@@ -177,28 +177,28 @@
         </div>
 
         <!-- 主視覺：可多張（生圖會累積），用 < > 切換 -->
-        <div v-if="gen[idx] && (gen[idx].loading || imgCount(idx) > 0)">
+        <div v-if="genOf(c).loading || imgCount(c) > 0">
           <div class="flex items-center justify-between mb-1.5">
             <div class="ds-label">
-              主視覺<span v-if="imgCount(idx) > 1" class="ds-muted font-normal"> · {{ gen[idx].view + 1 }}/{{ imgCount(idx) }}</span>
+              主視覺<span v-if="imgCount(c) > 1" class="ds-muted font-normal"> · {{ genOf(c).view + 1 }}/{{ imgCount(c) }}</span>
             </div>
-            <div v-if="imgCount(idx) > 1 && !gen[idx].loading" class="flex items-center gap-1">
-              <button @click="prevImg(idx)" class="ds-btn ds-btn--ghost text-sm px-2 py-0.5" title="上一張">‹</button>
-              <button @click="nextImg(idx)" class="ds-btn ds-btn--ghost text-sm px-2 py-0.5" title="下一張">›</button>
+            <div v-if="imgCount(c) > 1 && !genOf(c).loading" class="flex items-center gap-1">
+              <button @click="prevImg(c)" class="ds-btn ds-btn--ghost text-sm px-2 py-0.5" title="上一張">‹</button>
+              <button @click="nextImg(c)" class="ds-btn ds-btn--ghost text-sm px-2 py-0.5" title="下一張">›</button>
             </div>
           </div>
           <!-- 生成中：骨架 + 提示，避免以為當掉而重複按 -->
-          <div v-if="gen[idx] && gen[idx].loading"
+          <div v-if="genOf(c).loading"
                class="ds-surface rounded-lg animate-pulse flex items-center justify-center text-center px-4"
                style="aspect-ratio: 1 / 1;">
-            <span class="ds-muted text-xs leading-relaxed">🎨 生成中…一張約 10–30 秒，請稍候<br>（別重複按，完成會自動出現）</span>
+            <span class="ds-muted text-xs leading-relaxed">🎨 生成中…約 10–30 秒<br>（可重整、切換頁面，完成會自動出現）</span>
           </div>
-          <img v-else :src="imgSrc(idx)" alt="主視覺"
+          <img v-else :src="imgSrc(c)" alt="主視覺"
                class="w-full rounded-lg border border-white/[0.06]" />
-          <div v-if="gen[idx] && gen[idx].error" class="text-xs mt-1" style="color:#e5707e">{{ gen[idx].error }}</div>
+          <div v-if="genOf(c).error" class="text-xs mt-1" style="color:#e5707e">{{ genOf(c).error }}</div>
         </div>
         <!-- 沒有圖但有錯誤時也要顯示 -->
-        <div v-else-if="gen[idx] && gen[idx].error" class="text-xs" style="color:#e5707e">{{ gen[idx].error }}</div>
+        <div v-else-if="genOf(c).error" class="text-xs" style="color:#e5707e">{{ genOf(c).error }}</div>
 
       </div>
     </div>

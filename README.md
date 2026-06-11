@@ -74,7 +74,7 @@ AdGenPlugin/
 |---|---|
 | `GET /api/creatives` | 列出所有產出（id + brief + 組數） |
 | `GET /api/creatives/<id>` | 單一產出完整內容（補齊每組 uid） |
-| `PUT/DELETE /api/creatives/<id>/<idx>` | 編輯回存 / 刪除單組 |
-| `POST /api/images` · `GET /api/images/<uid>` | 生成主視覺（gpt-image-2）/ 取圖 |
+| `PUT/DELETE /api/creatives/<id>/<uid>` | 編輯回存 / 刪除單組（以 uid 指認） |
+| `POST /api/images` · `GET /api/images/status` · `GET /api/images/<uid>` | 生成主視覺（非同步，gpt-image-2）/ 任務狀態 / 取圖 |
 | `GET/POST /api/settings[/key]` | 讀取/設定 OpenAI key（存 `.env`，不回傳 key） |
 | `GET /api/health` | 健康檢查 |

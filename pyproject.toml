@@ -5,7 +5,6 @@ description = "廣告創意檢視看板（Flask + Vue 3）；素材由 generate-
 requires-python = ">=3.9"
 dependencies = [
     "flask>=3.0",
-    "flask-cors>=4.0",
     "openai>=1.0",
     "python-dotenv>=1.0",
 ]

@@ -18,29 +18,34 @@ createApp({
       selectedId: '',
       current: null,    // /api/creatives/<id> 完整內容（creatives 直接以 v-model 編輯）
       loading: false,
-      copiedIdx: -1,
-      savingIdx: -1,
-      savedIdx: -1,
-      deletingIdx: -1,
+      // 暫態 UI 狀態，以 creative uid 指認（'' = 無）
+      copiedUid: '',
+      savingUid: '',
+      savedUid: '',
+      deletingUid: '',
       // 設定 / API key
       showSettings: false,
       apiKeyInput: '',
       keySet: false,
       savingKey: false,
       keyMsg: '',
-      // 生圖狀態（與 creatives 對齊）：{ loading, error, bust, shown }
-      gen: [],
+      // 生圖狀態，以 creative 的 uid 索引：{ uid: { loading（由後端任務表同步）, error, view（看相簿第幾張） } }
+      // 用 uid 不用 index → 刪除/位移不需要重新對齊，其他卡的狀態完全不動
+      gen: {},
       // 共用確認對話框（刪除 / 大量生成共用，抽換內容）
       confirmBox: { show: false, title: '', message: '', okLabel: '確定', cancelLabel: '取消', danger: false },
-      // 大量生成
-      bulkRunning: false,
-      bulkDone: 0,
     };
   },
 
   async mounted() {
     await this.loadSets();
     this.refreshKeyState();
+  },
+
+  computed: {
+    // 「進行中」由後端任務表同步到 gen[uid].loading，這裡只是彙總
+    runningCount() { return Object.values(this.gen).filter((g) => g.loading).length; },
+    anyGenerating() { return this.runningCount > 0; },
   },
 
   methods: {
@@ -68,18 +73,21 @@ createApp({
       this.selectedId = id;
       this.loading = true;
       this.current = null;
-      this.gen = [];
-      this.copiedIdx = -1;
+      this.gen = {};
+      this.copiedUid = '';
       try {
         const r = await fetch('/api/creatives/' + encodeURIComponent(id));
         this.current = await r.json();
         const creatives = this.current.creatives || [];
-        // 每組一個狀態：view = 目前在看 images 清單的第幾張（預設看最新一張）
-        this.gen = creatives.map((c) => ({
-          loading: false,
-          error: '',
-          view: Math.max(0, ((c.images && c.images.length) || 1) - 1),
-        }));
+        // 每組一個「視圖狀態」（以 uid 索引）：view = 目前在看相簿第幾張（預設最新）。
+        // loading 是領域狀態，真相在後端任務表，由 syncJobs() 同步進來。
+        const gen = {};
+        creatives.forEach((c) => {
+          gen[c.uid] = { loading: false, error: '', view: Math.max(0, ((c.images && c.images.length) || 1) - 1) };
+        });
+        this.gen = gen;
+        await this.syncJobs();   // 接回「進行中」→ 重整 / 切批再回來都不失憶
+        if (this.anyGenerating) this.ensurePolling();
       } catch (e) {
         console.error('select', e);
       } finally {
@@ -88,34 +96,33 @@ createApp({
     },
 
     // 即時組出「使用說明 + {brief, creative}」（複製 / 生圖共用，反映目前編輯內容）
-    buildPayload(idx) {
+    buildPayload(c) {
       const brief = (this.current && this.current.brief) || {};
-      const creative = (this.current.creatives || [])[idx];
-      return INSTRUCTION + JSON.stringify({ brief, creative }, null, 2);
+      return INSTRUCTION + JSON.stringify({ brief, creative: c }, null, 2);
     },
 
-    async copy(idx) {
+    async copy(c) {
       try {
-        await navigator.clipboard.writeText(this.buildPayload(idx));
-        this.copiedIdx = idx;
-        setTimeout(() => { if (this.copiedIdx === idx) this.copiedIdx = -1; }, 1500);
+        await navigator.clipboard.writeText(this.buildPayload(c));
+        this.copiedUid = c.uid;
+        setTimeout(() => { if (this.copiedUid === c.uid) this.copiedUid = ''; }, 1500);
       } catch (e) {
         console.error('copy', e);
       }
     },
 
-    // 回存單組到 <id>.json
-    async saveCreative(idx) {
-      this.savingIdx = idx;
+    // 回存單組到 <id>.json（以 uid 指認）
+    async saveCreative(c) {
+      this.savingUid = c.uid;
       try {
-        const r = await fetch('/api/creatives/' + encodeURIComponent(this.selectedId) + '/' + idx, {
+        const r = await fetch('/api/creatives/' + encodeURIComponent(this.selectedId) + '/' + encodeURIComponent(c.uid), {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ creative: this.current.creatives[idx] }),
+          body: JSON.stringify({ creative: c }),
         });
         if (r.ok) {
-          this.savedIdx = idx;
-          setTimeout(() => { if (this.savedIdx === idx) this.savedIdx = -1; }, 1500);
+          this.savedUid = c.uid;
+          setTimeout(() => { if (this.savedUid === c.uid) this.savedUid = ''; }, 1500);
         } else {
           const d = await r.json().catch(() => ({}));
           alert('儲存失敗：' + (d.error || r.status));
@@ -124,7 +131,7 @@ createApp({
         console.error('save', e);
         alert('儲存失敗：' + e);
       } finally {
-        this.savingIdx = -1;
+        this.savingUid = '';
       }
     },
 
@@ -152,27 +159,30 @@ createApp({
     },
 
     // 刪除單組（會直接從 JSON 移除，無法復原）
-    deleteCreative(idx) {
+    deleteCreative(c) {
       this.askConfirm({
         title: '確定刪除這組創意？',
         message: '會直接從 <code>data/creatives</code> 的 JSON 移除這組，<b>無法復原</b>。',
         okLabel: '確定刪除',
         cancelLabel: '取消',
         danger: true,
-        onConfirm: () => this._doDelete(idx),
+        onConfirm: () => this._doDelete(c),
       });
     },
 
-    async _doDelete(idx) {
-      this.deletingIdx = idx;
+    async _doDelete(c) {
+      this.deletingUid = c.uid;
       try {
-        const r = await fetch('/api/creatives/' + encodeURIComponent(this.selectedId) + '/' + idx, {
+        const r = await fetch('/api/creatives/' + encodeURIComponent(this.selectedId) + '/' + encodeURIComponent(c.uid), {
           method: 'DELETE',
         });
         if (r.ok) {
           const s = this.sets.find((x) => x.id === this.selectedId);
           if (s) s.count = Math.max(0, s.count - 1);
-          await this.select(this.selectedId);   // 重載 → index / 圖片重新對齊
+          // gen 以 uid 索引 → 本地移除即可，不必整批重載，其他卡的生圖/相簿狀態不受影響
+          const pos = this.current.creatives.indexOf(c);
+          if (pos >= 0) this.current.creatives.splice(pos, 1);
+          delete this.gen[c.uid];
         } else {
           const d = await r.json().catch(() => ({}));
           alert('刪除失敗：' + (d.error || r.status));
@@ -181,7 +191,7 @@ createApp({
         console.error('delete', e);
         alert('刪除失敗：' + e);
       } finally {
-        this.deletingIdx = -1;
+        this.deletingUid = '';
       }
     },
 
@@ -219,58 +229,98 @@ createApp({
       }
     },
 
-    // ----- 生圖 / 圖片切換 -----
-    imgCount(idx) {
-      const c = ((this.current && this.current.creatives) || [])[idx];
+    // ----- 生圖 / 圖片切換（皆以 creative 物件操作，內部用 uid 查狀態） -----
+    genOf(c) {
+      return (c && this.gen[c.uid]) || {};   // 模板讀取用；查無時回空物件避免 undefined
+    },
+
+    imgCount(c) {
       return (c && Array.isArray(c.images) && c.images.length) || 0;
     },
 
-    imgSrc(idx) {
-      const c = ((this.current && this.current.creatives) || [])[idx];
-      const g = this.gen[idx];
-      if (!c || !Array.isArray(c.images) || !c.images.length || !g) return '';
+    imgSrc(c) {
+      const g = this.genOf(c);
+      if (!this.imgCount(c)) return '';
       // 每張圖各自一個 uid（內容不變）→ 網址穩定、免 cache-bust；view 指目前看第幾張
-      const v = Math.min(Math.max(g.view, 0), c.images.length - 1);
+      const v = Math.min(Math.max(g.view || 0, 0), c.images.length - 1);
       return '/api/images/' + c.images[v];
     },
 
-    prevImg(idx) {
-      const g = this.gen[idx]; const n = this.imgCount(idx);
+    prevImg(c) {
+      const g = this.gen[c.uid]; const n = this.imgCount(c);
       if (!g || !n) return;
       g.view = (g.view - 1 + n) % n;   // 環狀切換
     },
-    nextImg(idx) {
-      const g = this.gen[idx]; const n = this.imgCount(idx);
+    nextImg(c) {
+      const g = this.gen[c.uid]; const n = this.imgCount(c);
       if (!g || !n) return;
       g.view = (g.view + 1) % n;
     },
 
-    async generateImage(idx) {
+    // 下單即回（202）：真正的生圖在後端背景執行緒跑，進度靠 syncJobs 輪詢
+    async generateImage(c) {
       if (!this.keySet) { this.openSettings(); return; }
-      const g = this.gen[idx];
-      if (!g || g.loading) return;   // 防呆：已在生成中就忽略重複呼叫（擋同 tick 連點）
-      g.loading = true;
+      const g = c && this.gen[c.uid];
+      if (!c || !g || g.loading) return;
+      const reqId = this.selectedId;
       g.error = '';
       try {
         const r = await fetch('/api/images', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           // 送的就是「複製」那份：使用說明 + {brief, creative} JSON，讓 GPT 自行判讀 {{content.x}}
-          body: JSON.stringify({ id: this.selectedId, index: idx, prompt: this.buildPayload(idx) }),
+          body: JSON.stringify({ id: reqId, uid: c.uid, prompt: this.buildPayload(c) }),
         });
         const d = await r.json();
-        if (r.ok) {
-          // 後端回傳更新後的 images 清單；append 不覆蓋，切到最新一張
-          this.current.creatives[idx].images = d.images || [];
-          g.view = Math.max(0, this.current.creatives[idx].images.length - 1);
+        // 已切到別批 → 任務照跑（記在後端），切回來 syncJobs 會接手顯示
+        if (this.selectedId !== reqId) return;
+        if (r.status === 202 || r.status === 409) {  // 已登記（或本來就在跑）→ 進入進行中
+          g.loading = true;
+          this.ensurePolling();
         } else {
           g.error = d.error || '生圖失敗';
         }
       } catch (e) {
         g.error = '生圖失敗：' + e;
-      } finally {
-        g.loading = false;
       }
+    },
+
+    // ----- 任務同步：「進行中」的真相在後端 _JOBS 表，前端只是讀取 -----
+    async syncJobs() {
+      if (!this.current) return;
+      let jobs;
+      try {
+        jobs = (await (await fetch('/api/images/status')).json()).jobs || {};
+      } catch (e) {
+        console.error('syncJobs', e);
+        return;
+      }
+      (this.current.creatives || []).forEach((c) => {
+        const g = c && this.gen[c.uid];
+        const job = c && c.uid ? jobs[c.uid] : null;
+        if (!g || !job) return;
+        if (job.status === 'running') {
+          g.loading = true;                       // 重整 / 切回來也能接上進行中
+        } else if (g.loading && job.status === 'done') {
+          c.images = job.images || [];            // 後端先存 JSON 才標 done → 這份清單可信
+          g.view = Math.max(0, c.images.length - 1);
+          g.loading = false;
+        } else if (g.loading && job.status === 'failed') {
+          g.error = job.error || '生圖失敗';
+          g.loading = false;
+        }
+      });
+    },
+
+    ensurePolling() {
+      if (this._pollTimer) return;
+      this._pollTimer = setInterval(async () => {
+        await this.syncJobs();
+        if (!this.anyGenerating) {               // 沒有進行中了 → 停止輪詢
+          clearInterval(this._pollTimer);
+          this._pollTimer = null;
+        }
+      }, 2500);
     },
 
     // ----- 大量生成 -----
@@ -289,21 +339,8 @@ createApp({
     },
 
     async runBulk() {
-      this.bulkRunning = true;
-      this.bulkDone = 0;
-      const n = (this.current.creatives || []).length;
-      const CONCURRENCY = 5;   // 並發上限：一次最多同時生 5 張，避免撞 OpenAI rate limit
-      let next = 0;
-      const worker = async () => {
-        while (next < n) {
-          const i = next++;
-          await this.generateImage(i);
-          this.bulkDone++;
-        }
-      };
-      // 開 min(CONCURRENCY, n) 條 worker，共享 next 指標把 n 張分著跑
-      await Promise.all(Array.from({ length: Math.min(CONCURRENCY, n) }, worker));
-      this.bulkRunning = false;
+      // 每張都是「下單即回」（generateImage 自帶進行中防呆），排程與並發上限交給後端 semaphore 管
+      for (const c of this.current.creatives || []) await this.generateImage(c);
     },
   },
 }).mount('#app');
