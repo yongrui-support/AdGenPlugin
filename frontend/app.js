@@ -12,6 +12,12 @@ const INSTRUCTION =
   '・brief 僅作品牌背景情境參考。brief / copy 不要當成圖中文字額外畫上去。\n' +
   '・若 brief 與 creative 內容衝突（如優惠數字、文字措辭），一律以 creative 為準——brief 是發想時的輸入，creative 才是現行版本。\n\n';
 
+// 改圖模式前綴：使用者會把已生成的圖一併附給生圖模型，要求「基於附圖微調」而非重生
+const IMAGE_EDIT_PREFIX =
+  '【改圖模式】請依據附圖作如下改變、其他不變：\n' +
+  '・以附圖為基底，僅調整與下方 creative 最新內容不符之處（如圖中文字、優惠數字、CTA）。\n' +
+  '・構圖、風格、配色、元素一律延續附圖，不要重新發想。\n\n';
+
 createApp({
   data() {
     return {
@@ -109,9 +115,29 @@ createApp({
       return INSTRUCTION + JSON.stringify({ brief, creative: c }, null, 2);
     },
 
-    async copy(c) {
+    copy(c) {
+      // 這組已有生成圖 → 問要「基於附圖改圖」還是「生新圖」；沒圖就照舊直接複製
+      if (this.imgCount(c) > 0) {
+        this.askConfirm({
+          title: '要基於已生成的圖改圖嗎？',
+          message:
+            '・<b>基於附圖改圖</b>：prompt 會加上「請依據附圖作如下改變、其他不變」——' +
+            '貼到生圖模型時，記得把目前顯示的那張圖<b>一併附上</b>。<br>' +
+            '・<b>生新圖</b>：照原樣複製，讓模型自由發揮。',
+          okLabel: '基於附圖改圖',
+          cancelLabel: '生新圖',
+          onConfirm: () => this._doCopy(c, true),
+          onCancel: () => this._doCopy(c, false),
+        });
+      } else {
+        this._doCopy(c, false);
+      }
+    },
+
+    async _doCopy(c, basedOnImage) {
       try {
-        await navigator.clipboard.writeText(this.buildPayload(c));
+        const text = (basedOnImage ? IMAGE_EDIT_PREFIX : '') + this.buildPayload(c);
+        await navigator.clipboard.writeText(text);
         this.copiedUid = c.uid;
         setTimeout(() => { if (this.copiedUid === c.uid) this.copiedUid = ''; }, 1500);
       } catch (e) {
@@ -144,6 +170,8 @@ createApp({
     },
 
     // ----- 共用確認對話框 -----
+    // onCancel 可選：給「兩顆按鈕＝兩種動作」的對話框用（如複製的改圖/新圖）；
+    // 點背景 = confirmDismiss = 什麼都不做。
     askConfirm(opts) {
       this.confirmBox = {
         show: true,
@@ -154,16 +182,22 @@ createApp({
         danger: !!opts.danger,
       };
       this._confirmAction = opts.onConfirm || null;   // 動作放實例屬性，不進 reactive data
+      this._cancelAction = opts.onCancel || null;
     },
     confirmOk() {
       const fn = this._confirmAction;
-      this.confirmBox.show = false;
-      this._confirmAction = null;
+      this.confirmDismiss();
       if (fn) fn();
     },
     confirmCancel() {
+      const fn = this._cancelAction;
+      this.confirmDismiss();
+      if (fn) fn();
+    },
+    confirmDismiss() {
       this.confirmBox.show = false;
       this._confirmAction = null;
+      this._cancelAction = null;
     },
 
     // 刪除單組（會直接從 JSON 移除，無法復原）

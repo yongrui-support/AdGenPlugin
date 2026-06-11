@@ -241,7 +241,7 @@
 
   <!-- 共用確認對話框（刪除 / 大量生成等抽換內容） -->
   <div v-if="confirmBox.show" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-    <div class="ds-backdrop absolute inset-0" @click="confirmCancel"></div>
+    <div class="ds-backdrop absolute inset-0" @click="confirmDismiss"></div>
     <div class="ds-modal relative w-full max-w-md p-6 space-y-4">
       <h2 class="ds-title text-lg font-semibold">{{ confirmBox.title }}</h2>
       <p class="text-sm leading-relaxed" style="color: var(--fg);" v-html="confirmBox.message"></p>
