@@ -22,6 +22,8 @@ import sys
 import threading
 import uuid
 
+import migrations  # schema 版本化遷移（與 server.py 同目錄；sys.path[0] = script 所在處，plugin 場景也找得到）
+
 # 強制 stdout/stderr 使用 UTF-8（避免 Windows cp950/cp1252 出現 UnicodeEncodeError）
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -94,8 +96,11 @@ def api_creatives_list():
     items = []
     for path in glob.glob(os.path.join(DIR_CREATIVES, "*.json")):
         try:
-            with open(path, encoding="utf-8") as f:
-                d = json.load(f)
+            with _JSON_LOCK:
+                with open(path, encoding="utf-8") as f:
+                    d = json.load(f)
+                if _ensure_schema(d):  # 順手做 schema 遷移（含 brief 欄位改名），下拉才讀得到新欄位
+                    _save_batch(os.path.splitext(os.path.basename(path))[0], d)
             items.append(
                 {
                     "id": os.path.splitext(os.path.basename(path))[0],
@@ -117,7 +122,7 @@ def api_creatives_get(creative_id):
         d = _safe_read(DIR_CREATIVES, creative_id)
         if d is None:
             return jsonify({"error": "找不到該創意"}), 404
-        if _ensure_creative_fields(d):
+        if _ensure_schema(d):
             _save_batch(creative_id, d)
     return jsonify(d)
 
@@ -163,9 +168,15 @@ def _save_batch(creative_id, d):
         json.dump(d, f, ensure_ascii=False, indent=2)
 
 
-def _ensure_creative_fields(d):
-    """確保每組有 uid 與 images（該組生成圖的 uid 清單）；舊版單張 <uid>.png 遷入清單。回傳是否有變更。"""
-    changed = False
+def _ensure_schema(d):
+    """讀取時把批次 JSON 升到目前 schema。回傳是否有變更（呼叫端據此寫回磁碟）。
+
+    1) 版本化遷移（migrations.py）：一次性結構變動，依 schema_version 逐版補上。
+    2) 不變量修補（每次都跑、與版號無關）：每組補 uid / images——skill 追加的新組
+       本來就不帶這些系統欄位，不是一次性遷移能涵蓋的。
+    """
+    changed = migrations.migrate(d)
+
     images_dir = _images_dir()
     for c in d.get("creatives") or []:
         if not isinstance(c, dict):
@@ -309,7 +320,7 @@ def api_generate_image():
         d = _safe_read(DIR_CREATIVES, cid)
         if d is None:
             return jsonify({"error": "找不到該創意"}), 404
-        if _ensure_creative_fields(d):
+        if _ensure_schema(d):
             _save_batch(cid, d)
         creatives = d.get("creatives") or []
         creative = next((c for c in creatives if isinstance(c, dict) and c.get("uid") == target_uid), None)
@@ -318,7 +329,8 @@ def api_generate_image():
         # prompt 由前端帶來（= 複製鈕那份：使用說明 + {brief, creative} JSON），讓 GPT 自行依
         # composition_prompt 的 {{content.x}} 對應 content 判讀；直接呼叫 API 未帶 prompt 時，退用 JSON。
         prompt = body.get("prompt") or json.dumps({"brief": d.get("brief"), "creative": creative}, ensure_ascii=False)
-        aspect = (d.get("brief") or {}).get("aspect", "1:1")
+        # 比例：body 可逐次覆寫（同一組可生多種版位比例，進同一本相簿），預設用 brief 的 default_aspect
+        aspect = body.get("aspect") or (d.get("brief") or {}).get("default_aspect", "1:1")
     size = SIZE_BY_ASPECT.get(aspect, "1024x1024")
     quality = body.get("quality") or "high"
     with _JOBS_LOCK:

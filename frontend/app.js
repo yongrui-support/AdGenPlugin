@@ -9,7 +9,8 @@ const { createApp } = Vue;
 const INSTRUCTION =
   '請依此 creative 的各欄位產生這張廣告主視覺圖：\n' +
   '・composition_prompt 為主；content 是「圖中要出現的文字」（對應 prompt 裡的 {{content.欄位}} 佔位）；copy 供訊息與語氣參考。\n' +
-  '・brief 僅作品牌背景情境參考。brief / copy 不要當成圖中文字額外畫上去。\n\n';
+  '・brief 僅作品牌背景情境參考。brief / copy 不要當成圖中文字額外畫上去。\n' +
+  '・若 brief 與 creative 內容衝突（如優惠數字、文字措辭），一律以 creative 為準——brief 是發想時的輸入，creative 才是現行版本。\n\n';
 
 createApp({
   data() {
@@ -79,11 +80,18 @@ createApp({
         const r = await fetch('/api/creatives/' + encodeURIComponent(id));
         this.current = await r.json();
         const creatives = this.current.creatives || [];
-        // 每組一個「視圖狀態」（以 uid 索引）：view = 目前在看相簿第幾張（預設最新）。
+        // 每組一個「視圖狀態」（以 uid 索引）：view = 目前在看相簿第幾張（預設最新）；
+        // aspect = 這組生圖用的比例（預設跟 brief，可逐卡改 → 同組生多種版位比例進同一相簿）。
         // loading 是領域狀態，真相在後端任務表，由 syncJobs() 同步進來。
+        const briefAspect = (this.current.brief && this.current.brief.default_aspect) || '1:1';
         const gen = {};
         creatives.forEach((c) => {
-          gen[c.uid] = { loading: false, error: '', view: Math.max(0, ((c.images && c.images.length) || 1) - 1) };
+          gen[c.uid] = {
+            loading: false,
+            error: '',
+            view: Math.max(0, ((c.images && c.images.length) || 1) - 1),
+            aspect: briefAspect,
+          };
         });
         this.gen = gen;
         await this.syncJobs();   // 接回「進行中」→ 重整 / 切批再回來都不失憶
@@ -264,12 +272,19 @@ createApp({
       if (!c || !g || g.loading) return;
       const reqId = this.selectedId;
       g.error = '';
+      // 比例：用這張卡選的 aspect；與 brief 不同時在 prompt 補一句，蓋過 composition_prompt 裡寫死的比例
+      const briefAspect = (this.current.brief && this.current.brief.default_aspect) || '1:1';
+      const aspect = g.aspect || briefAspect;
+      let prompt = this.buildPayload(c);
+      if (aspect !== briefAspect) {
+        prompt += '\n（本次輸出比例改為 ' + aspect + '，構圖請依此比例調整，忽略 composition_prompt 中提到的其他比例。）';
+      }
       try {
         const r = await fetch('/api/images', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           // 送的就是「複製」那份：使用說明 + {brief, creative} JSON，讓 GPT 自行判讀 {{content.x}}
-          body: JSON.stringify({ id: reqId, uid: c.uid, prompt: this.buildPayload(c) }),
+          body: JSON.stringify({ id: reqId, uid: c.uid, prompt, aspect }),
         });
         const d = await r.json();
         // 已切到別批 → 任務照跑（記在後端），切回來 syncJobs 會接手顯示

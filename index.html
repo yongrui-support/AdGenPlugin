@@ -78,7 +78,7 @@
       <span class="ds-label">文案選擇</span>
       <select v-if="sets.length" v-model="selectedId" @change="select(selectedId)" class="ds-select">
         <option v-for="s in sets" :key="s.id" :value="s.id">
-          {{ (s.brief && s.brief.brand_name + '-' + s.brief.offer) || s.id }} · {{ s.count }} 組{{ s.mode==='copy_only' ? '（補構圖）' : '' }}
+          {{ (s.brief && s.brief.brand_name + '-' + s.brief.default_offer) || s.id }} · {{ s.count }} 組{{ s.mode==='copy_only' ? '（補構圖）' : '' }}
         </option>
       </select>
       <span v-if="!sets.length" class="ds-muted text-sm">
@@ -90,7 +90,7 @@
     <div v-if="current && current.brief" class="ds-surface p-4 mb-6 text-sm"
          style="border-color: var(--border-accent); background: rgba(94,106,210,0.06);">
       <div class="flex items-center justify-between gap-3 mb-2">
-        <div class="ds-label">品牌 brief</div>
+        <div class="ds-label">品牌 brief <span class="ds-muted font-normal normal-case">· 發想時的輸入快照，卡片產出可獨立修改</span></div>
         <button @click="openBulkConfirm" :disabled="anyGenerating"
                 class="ds-btn ds-btn--primary text-xs px-3 py-1.5 shrink-0">
           {{ anyGenerating ? ('生成中… 剩 ' + runningCount + ' 張') : '一鍵生成全部圖' }}
@@ -99,10 +99,10 @@
       <div class="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2">
         <div><div class="ds-muted text-xs">品牌</div>{{ current.brief.brand_name || '—' }}</div>
         <div v-if="current.brief.product"><div class="ds-muted text-xs">產品</div>{{ current.brief.product }}</div>
-        <div v-if="current.brief.offer"><div class="ds-muted text-xs">優惠</div>{{ current.brief.offer }}</div>
+        <div v-if="current.brief.default_offer"><div class="ds-muted text-xs">預設優惠</div>{{ current.brief.default_offer }}</div>
         <div v-if="current.brief.brand_tone"><div class="ds-muted text-xs">語氣</div>{{ current.brief.brand_tone }}</div>
         <div v-if="current.brief.target_language"><div class="ds-muted text-xs">語言</div>{{ current.brief.target_language }}</div>
-        <div v-if="current.brief.aspect"><div class="ds-muted text-xs">比例</div>{{ current.brief.aspect }}</div>
+        <div v-if="current.brief.default_aspect"><div class="ds-muted text-xs">預設比例</div>{{ current.brief.default_aspect }}</div>
         <div v-if="current.brief.usp && current.brief.usp.length" class="col-span-2 md:col-span-3">
           <div class="ds-muted text-xs">賣點</div>
           <div class="flex flex-wrap gap-1.5 mt-0.5">
@@ -137,6 +137,13 @@
                     class="ds-btn ds-btn--ghost text-xs px-2.5 py-1">
               {{ savedUid === c.uid ? '✓ 已存' : (savingUid === c.uid ? '儲存中…' : '儲存') }}
             </button>
+            <select v-model="gen[c.uid].aspect" :disabled="genOf(c).loading"
+                    class="ds-select text-xs px-1.5 py-1" title="生圖比例（同組可生多種比例，存進同一相簿）">
+              <option value="1:1">1:1</option>
+              <option value="4:5">4:5</option>
+              <option value="9:16">9:16</option>
+              <option value="16:9">16:9</option>
+            </select>
             <button @click="generateImage(c)" :disabled="genOf(c).loading"
                     class="ds-btn ds-btn--secondary text-xs px-2.5 py-1">
               {{ genOf(c).loading ? '生圖中…' : '生圖' }}
@@ -190,7 +197,7 @@
           <!-- 生成中：骨架 + 提示，避免以為當掉而重複按 -->
           <div v-if="genOf(c).loading"
                class="ds-surface rounded-lg animate-pulse flex items-center justify-center text-center px-4"
-               style="aspect-ratio: 1 / 1;">
+               :style="{ aspectRatio: (genOf(c).aspect || '1:1').replace(':', ' / ') }">
             <span class="ds-muted text-xs leading-relaxed">🎨 生成中…約 10–30 秒<br>（可重整、切換頁面，完成會自動出現）</span>
           </div>
           <img v-else :src="imgSrc(c)" alt="主視覺"

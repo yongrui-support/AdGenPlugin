@@ -22,6 +22,9 @@ OpenAI key 後直接呼叫 **gpt-image-2** 生成主視覺。
 /plugin install ad-generator@ad-generator
 ```
 
+更新：`/plugin marketplace update` → 在 `/plugin` 更新 ad-generator → `/reload-plugins`。
+（解除安裝：`/plugin uninstall` + `/plugin marketplace remove`，完全可逆。）
+
 裝好後三個 skill：
 
 | skill | 用途 |
@@ -34,7 +37,7 @@ OpenAI key 後直接呼叫 **gpt-image-2** 生成主視覺。
 
 1. `/ad-generator:setup`（首次，裝好 uv 與相依）。
 2. `/ad-generator:generate-creatives` —— 一步步給品牌資訊，產出多組素材。
-3. `/ad-generator:serve` —— 開看板：可**編輯**文案/構圖並儲存、**複製** prompt 自行貼到 ChatGPT/Gemini 生圖，或在右上「設定」填 OpenAI key 後**直接生圖**（單張或「一鍵生成全部」）、**刪除**不要的組。
+3. `/ad-generator:serve` —— 開看板：可**編輯**文案/構圖並儲存、**複製** prompt 自行貼到 ChatGPT/Gemini 生圖，或在右上「設定」填 OpenAI key 後**直接生圖**（單張或「一鍵生成全部」；每組可換**比例**出不同版位，生成的圖**累積成相簿**用 `‹ ›` 切換）、**刪除**不要的組（連同其所有圖）。生圖為非同步任務——中途重整、切換頁面都沒關係，完成自動出現。
 
 ## 開發者：直接在 repo 跑（不用安裝 plugin）
 
@@ -58,12 +61,14 @@ AdGenPlugin/
 │   ├── serve/SKILL.md                啟動看板（自動定位 server.py）
 │   └── setup/SKILL.md                環境安裝（brew/scoop → uv）
 ├── server.py              Flask 後端（前端 + 檢視/編輯/刪除/生圖 API；--data-dir 指定資料目錄）
+├── migrations.py          批次 JSON 的 schema 版本化遷移（讀取時惰性逐版升級）
 ├── index.html             看板 UI 結構（Vue 3）
 ├── frontend/
 │   ├── app.js             看板邏輯
 │   ├── theme.css          設計系統（token + 可組裝的 .ds-* 元件庫 + 氛圍背景）
 │   └── styles.css         App 專屬覆寫
-├── data/creatives/        產出 JSON（gitignore；每組有 uid）；data/images/ 生圖 <uid>.png（gitignore）
+├── data/creatives/        產出 JSON（gitignore；每組有 uid、brief 為發想輸入快照）
+├── data/images/           生圖產物（gitignore；每張圖各自 uid，由該組 images[] 引用成相簿）
 ├── pyproject.toml / uv.lock
 └── README.md / CLAUDE.md
 ```
@@ -73,7 +78,7 @@ AdGenPlugin/
 | 端點 | 用途 |
 |---|---|
 | `GET /api/creatives` | 列出所有產出（id + brief + 組數） |
-| `GET /api/creatives/<id>` | 單一產出完整內容（補齊每組 uid） |
+| `GET /api/creatives/<id>` | 單一產出完整內容（讀取時順手做 schema 遷移、補系統欄位） |
 | `PUT/DELETE /api/creatives/<id>/<uid>` | 編輯回存 / 刪除單組（以 uid 指認） |
 | `POST /api/images` · `GET /api/images/status` · `GET /api/images/<uid>` | 生成主視覺（非同步，gpt-image-2）/ 任務狀態 / 取圖 |
 | `GET/POST /api/settings[/key]` | 讀取/設定 OpenAI key（存 `.env`，不回傳 key） |
