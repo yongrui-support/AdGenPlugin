@@ -107,7 +107,10 @@ createApp({
       this.copiedUid = '';
       try {
         const r = await fetch('/api/creatives/' + encodeURIComponent(id));
-        this.current = await r.json();
+        const data = await r.json();
+        // 快速連切下拉時，慢的舊回應後到會把畫面蓋回舊批（下拉卻是新批）→ 過期就丟棄
+        if (this.selectedId !== id) return;
+        this.current = data;
         const creatives = this.current.creatives || [];
         // 每組一個「視圖狀態」（以 uid 索引）：view = 目前在看相簿第幾張（預設最新）；
         // aspect = 這組生圖用的比例（預設跟 brief，可逐卡改 → 同組生多種版位比例進同一相簿）。
@@ -128,7 +131,7 @@ createApp({
       } catch (e) {
         console.error('select', e);
       } finally {
-        this.loading = false;
+        if (this.selectedId === id) this.loading = false;  // 過期請求別關掉新請求的載入中
       }
     },
 

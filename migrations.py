@@ -33,14 +33,22 @@ _MIGRATIONS = {0: _migrate_0_to_1, 1: _migrate_1_to_2}
 
 
 def migrate(d):
-    """把批次 dict 逐版升到 SCHEMA_VERSION。回傳是否有變更（呼叫端據此寫回磁碟）。"""
-    old_v = d.get("schema_version") or 0
-    v = old_v
+    """把批次 dict 逐版升到 SCHEMA_VERSION。回傳是否有變更（呼叫端據此寫回磁碟）。
+    防禦：skill 跨程序寫檔，版號可能是字串/負數/垃圾——正規化後再跑（遷移皆冪等，從 0 重跑安全）；
+    版號 >= 目前（含「來自未來」的檔）一律不動，不降級改寫。"""
+    if not isinstance(d, dict):
+        return False
+    try:
+        v = int(d.get("schema_version") or 0)
+    except (TypeError, ValueError):
+        v = 0
+    if v >= SCHEMA_VERSION:
+        return False
+    v = max(0, v)
+    old_v = v
     while v < SCHEMA_VERSION:
         _MIGRATIONS[v](d)
         v += 1
-    if v == old_v:
-        return False
     d["schema_version"] = SCHEMA_VERSION
     # 一個檔案一生只會印一次（之後被版號擋住）；除錯時可確認遷移確實發生
     print(f"[migrate] {d.get('id', '?')}: schema {old_v} → {SCHEMA_VERSION}", flush=True)

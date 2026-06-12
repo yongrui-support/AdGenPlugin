@@ -101,11 +101,15 @@ def _scan_materials():
             if ext.lower() not in MATERIAL_EXTS:
                 continue
             rel = os.path.relpath(os.path.join(root, stem), d).replace(os.sep, "/")
+            try:
+                mtime = os.path.getmtime(os.path.join(root, f))
+            except OSError:
+                continue  # 掃描瞬間檔案被刪（如 UI 刪除鈕）→ 跳過，別讓整個列表 500
             items.append({
                 "name": rel,
                 "ext": ext.lstrip("."),
                 "description": desc.get(rel, ""),
-                "_mtime": os.path.getmtime(os.path.join(root, f)),
+                "_mtime": mtime,
             })
     items.sort(key=lambda x: x.pop("_mtime"), reverse=True)
     return items
@@ -145,7 +149,8 @@ def _safe_read(directory, item_id):
         return None
     try:
         with open(path, encoding="utf-8") as f:
-            return json.load(f)
+            d = json.load(f)
+        return d if isinstance(d, dict) else None  # 頂層不是物件的怪檔 → 視為不可讀（404 而非 500）
     except Exception:
         return None
 
@@ -159,6 +164,8 @@ def api_creatives_list():
             with _JSON_LOCK:
                 with open(path, encoding="utf-8") as f:
                     d = json.load(f)
+                if not isinstance(d, dict):
+                    raise ValueError("頂層不是 JSON 物件")
                 if _ensure_schema(d):  # 順手做 schema 遷移（含 brief 欄位改名），下拉才讀得到新欄位
                     _save_batch(os.path.splitext(os.path.basename(path))[0], d)
             items.append(
@@ -169,7 +176,9 @@ def api_creatives_list():
                     "count": len(d.get("creatives") or []),
                 }
             )
-        except Exception:
+        except Exception as e:
+            # 別默默吞掉——壞檔會從看板「憑空消失」，使用者以為資料不見了
+            print(f"[list] 跳過無法讀取的批次 {os.path.basename(path)}：{e}", flush=True)
             continue
     items.sort(key=lambda x: x["id"], reverse=True)
     return jsonify({"creatives": items})
@@ -224,8 +233,13 @@ def api_creatives_modify(creative_id, creative_uid):
 
 
 def _save_batch(creative_id, d):
-    with open(os.path.join(DIR_CREATIVES, creative_id + ".json"), "w", encoding="utf-8") as f:
+    """原子寫入：先寫 .tmp 再 os.replace（Windows 也原子）——寫到一半程序被殺，
+    也不會留下半截 JSON 把整批毀掉（檔案即資料庫，這是耐久性底線）。"""
+    path = os.path.join(DIR_CREATIVES, creative_id + ".json")
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(d, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, path)
 
 
 def _ensure_schema(d):
@@ -285,25 +299,25 @@ def _remove_image(uid):
 # ---------- 設定（API key）----------
 
 
-def _read_env_file():
-    data = {}
+def _write_env_var(key, value):
+    """只就地替換／追加該 key 那一行，其餘行原樣保留——plugin 場景下 .env 是
+    **使用者專案自己的檔案**（可能有註解、其他工具的設定、多行值），不可整檔重組。"""
+    lines = []
     if os.path.isfile(ENV_FILE):
         with open(ENV_FILE, encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                k, v = line.split("=", 1)
-                data[k.strip()] = v.strip()
-    return data
-
-
-def _write_env_var(key, value):
-    data = _read_env_file()
-    data[key] = value
-    with open(ENV_FILE, "w", encoding="utf-8") as f:
-        for k, v in data.items():
-            f.write(f"{k}={v}\n")
+            lines = f.read().splitlines()
+    new_line = f"{key}={value}"
+    for i, line in enumerate(lines):
+        s = line.strip()
+        if s.startswith(f"{key}=") or s.startswith(f"export {key}="):
+            lines[i] = new_line
+            break
+    else:
+        lines.append(new_line)
+    tmp = ENV_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    os.replace(tmp, ENV_FILE)
 
 
 @app.route("/api/settings")
@@ -388,7 +402,9 @@ def _generate_image_b64(prompt, size, quality, materials=None):
             b64 = base64.b64encode(f.read()).decode()
         content.append({"type": "input_image", "image_url": f"data:{mime};base64,{b64}"})
 
-    client = OpenAI()  # 自動讀 OPENAI_API_KEY
+    # max_retries=0：SDK 預設逾時自動重試 2 次——生圖昂貴，網路層 timeout 時（伺服端可能已生成）
+    # 重試＝最多三重計費。關掉，失敗交給任務表如實呈現。
+    client = OpenAI(max_retries=0)  # 自動讀 OPENAI_API_KEY
     resp = client.responses.create(
         model=OPENAI_RESPONSES_MODEL,
         input=[{"role": "user", "content": content}],
@@ -408,11 +424,19 @@ def _image_worker(cid, target_uid, prompt, size, quality, materials=None):
         if not b64:
             raise RuntimeError("模型未回傳圖片")
         new_uid = uuid.uuid4().hex[:12]
-        # 存進「批次 id」子資料夾——批次 id 人類可讀，翻資料夾就找得到某批的圖；引用仍用 uid
+        # 存進「批次 id」子資料夾——批次 id 人類可讀，翻資料夾就找得到某批的圖；引用仍用 uid。
+        # 重試一次：makedirs 與 open 之間有極窄窗口，可能被並行刪圖的「空資料夾順手收掉」搶走
+        # ——此時 OpenAI 已計費，圖絕不能丟。
         batch_dir = os.path.join(_images_dir(), cid)
-        os.makedirs(batch_dir, exist_ok=True)
-        with open(os.path.join(batch_dir, new_uid + ".png"), "wb") as f:
-            f.write(base64.b64decode(b64))
+        for attempt in (1, 2):
+            try:
+                os.makedirs(batch_dir, exist_ok=True)
+                with open(os.path.join(batch_dir, new_uid + ".png"), "wb") as f:
+                    f.write(base64.b64decode(b64))
+                break
+            except FileNotFoundError:
+                if attempt == 2:
+                    raise
         # 寫回段（持鎖）：重讀最新 JSON、用 uid 找回該組再 append——不拿舊快照整份覆寫，
         # 並行生圖 / 期間的編輯刪除都不會被洗掉。
         with _JSON_LOCK:
