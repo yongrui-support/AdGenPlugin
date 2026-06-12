@@ -1,4 +1,4 @@
-# Ad Generator — 廣告創意產生 + 檢視（Claude Code plugin）
+# Ad Generator — 廣告創意產生 + 生圖看板（Claude Code plugin）
 
 用 Claude 的 **`generate-creatives` skill** 把品牌 brief（或競品參考）變成可投放的廣告素材：
 **文案 + 給 GPT 生圖的 `composition_prompt`**，一次多組、衝量提高可用率。產出存到
@@ -12,8 +12,6 @@ OpenAI key 後直接呼叫 **gpt-image-2** 生成主視覺。
    ↓
 看板（/ad-generator:serve）：檢視 / 編輯 / 生圖（gpt-image-2）/ 刪除
 ```
-
-- 發想在 Claude session（skill）；web 端負責檢視 / 編輯 / 生圖 / 刪除。後端：Flask + OpenAI SDK。
 
 ## 安裝（Claude Code plugin）
 
