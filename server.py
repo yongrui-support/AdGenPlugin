@@ -327,8 +327,17 @@ def api_generate_image():
         if creative is None:
             return jsonify({"error": "找不到該組（uid 不存在）"}), 404
         # prompt 由前端帶來（= 複製鈕那份：使用說明 + {brief, creative} JSON），讓 GPT 自行依
-        # composition_prompt 的 {{content.x}} 對應 content 判讀；直接呼叫 API 未帶 prompt 時，退用 JSON。
-        prompt = body.get("prompt") or json.dumps({"brief": d.get("brief"), "creative": creative}, ensure_ascii=False)
+        # composition_prompt 的 {{content.x}} 對應 content 判讀；直接呼叫 API 未帶 prompt 時，
+        # 退用同款「瘦身」JSON（去掉 uid/images/策略標籤/重複的 copy 欄位，對生圖無益）。
+        slim = {
+            "brief": {k: v for k, v in (d.get("brief") or {}).items() if v not in (None, "")},
+            "creative": {
+                "content": creative.get("content"),
+                "composition_prompt": creative.get("composition_prompt"),
+                "primary_text": (creative.get("copy") or {}).get("primary_text"),
+            },
+        }
+        prompt = body.get("prompt") or json.dumps(slim, ensure_ascii=False)
         # 比例：body 可逐次覆寫（同一組可生多種版位比例，進同一本相簿），預設用 brief 的 default_aspect
         aspect = body.get("aspect") or (d.get("brief") or {}).get("default_aspect", "1:1")
     size = SIZE_BY_ASPECT.get(aspect, "1024x1024")

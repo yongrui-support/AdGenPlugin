@@ -8,8 +8,8 @@ const { createApp } = Vue;
 // 給 GPT 的使用說明：界定「哪些要畫進圖、哪些只是情境參考」
 const INSTRUCTION =
   '請依此 creative 的各欄位產生這張廣告主視覺圖：\n' +
-  '・composition_prompt 為主；content 是「圖中要出現的文字」（對應 prompt 裡的 {{content.欄位}} 佔位）；copy 供訊息與語氣參考。\n' +
-  '・brief 僅作品牌背景情境參考。brief / copy 不要當成圖中文字額外畫上去。\n' +
+  '・composition_prompt 為主；content 是「圖中要出現的文字」（對應 prompt 裡的 {{content.欄位}} 佔位）。\n' +
+  '・primary_text 是貼文文案、brief 是品牌背景，都僅供訊息與語氣參考，不要當成圖中文字畫上去。\n' +
   '・若 brief 與 creative 內容衝突（如優惠數字、文字措辭），一律以 creative 為準——brief 是發想時的輸入，creative 才是現行版本。\n\n';
 
 // 改圖模式前綴：使用者會把已生成的圖一併附給生圖模型，要求「基於附圖微調」而非重生
@@ -109,10 +109,20 @@ createApp({
       }
     },
 
-    // 即時組出「使用說明 + {brief, creative}」（複製 / 生圖共用，反映目前編輯內容）
+    // 即時組出「使用說明 + {brief, creative}」（複製 / 生圖共用，反映目前編輯內容）。
+    // 送生圖的 payload 刻意瘦身：uid/images（系統欄位）、angle/hook/funnel（策略標籤）、
+    // copy 的 headline/cta（與 content 重複）都對生圖無益，只留 primary_text 供語氣參考。
     buildPayload(c) {
-      const brief = (this.current && this.current.brief) || {};
-      return INSTRUCTION + JSON.stringify({ brief, creative: c }, null, 2);
+      const brief = {};
+      Object.entries((this.current && this.current.brief) || {}).forEach(([k, v]) => {
+        if (v !== null && v !== '' && v !== undefined) brief[k] = v;
+      });
+      const creative = {
+        content: c.content,
+        composition_prompt: c.composition_prompt,
+        primary_text: (c.copy && c.copy.primary_text) || undefined,
+      };
+      return INSTRUCTION + JSON.stringify({ brief, creative }, null, 2);
     },
 
     copy(c) {
