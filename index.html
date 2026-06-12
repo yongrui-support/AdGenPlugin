@@ -89,9 +89,9 @@
     <!-- 素材庫：把圖直接丟進 data/materials/（檔名即名稱），卡片勾選後生圖會附給模型 -->
     <div class="ds-surface p-4 mb-6 text-sm">
       <div class="flex flex-wrap items-center justify-between gap-3">
-        <div class="ds-label">素材庫 <span class="ds-muted font-normal normal-case">· {{ visibleMaterials.length }} 件（只列目前品牌＋共用）</span></div>
+        <div class="ds-label">素材庫 <span class="ds-muted font-normal normal-case">· {{ visibleMaterials.length }} 件（只列目前品牌的）</span></div>
         <div class="flex items-center gap-2">
-          <span class="ds-muted text-xs">丟進 <code>data/materials/&lt;品牌名&gt;/</code>（資料夾=品牌、檔名=素材名；根目錄=共用）→</span>
+          <span class="ds-muted text-xs">丟進 <code>data/materials/&lt;品牌名&gt;/</code>（資料夾名=品牌、檔名=素材名；沒歸資料夾不會列出）→</span>
           <button @click="loadMaterials" class="ds-btn ds-btn--secondary text-xs px-2.5 py-1">重新整理</button>
         </div>
       </div>

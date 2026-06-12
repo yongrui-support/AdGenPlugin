@@ -56,17 +56,14 @@ createApp({
     // 「進行中」由後端任務表同步到 gen[uid].loading，這裡只是彙總
     runningCount() { return Object.values(this.gen).filter((g) => g.loading).length; },
     anyGenerating() { return this.runningCount > 0; },
-    // 只顯示「跟目前批次有關」的素材：品牌子資料夾（資料夾名=brand_name）+ 根目錄共用
-    // + 這批已引用的（防資料夾改名後勾選消失）。沒選批次時顯示全部。
+    // 只顯示「跟目前批次有關」的素材：品牌子資料夾（資料夾名=brand_name）
+    // + 這批已引用的（防資料夾改名後勾選消失）。沒歸進資料夾的一律不列。
     visibleMaterials() {
-      if (!this.current || !this.current.brief) return this.materials;
+      const foldered = this.materials.filter((m) => m.name.includes('/'));
+      if (!this.current || !this.current.brief) return foldered;
       const brand = this.current.brief.brand_name || '';
       const referenced = new Set((this.current.creatives || []).flatMap((c) => c.materials || []));
-      return this.materials.filter((m) => {
-        const i = m.name.indexOf('/');
-        if (i < 0) return true;                          // 根目錄 = 共用
-        return m.name.slice(0, i) === brand || referenced.has(m.name);
-      });
+      return foldered.filter((m) => m.name.slice(0, m.name.indexOf('/')) === brand || referenced.has(m.name));
     },
 
     // 素材依子資料夾分組（'' = 根目錄）
