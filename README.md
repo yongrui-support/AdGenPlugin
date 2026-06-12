@@ -66,7 +66,8 @@ AdGenPlugin/
 │   ├── theme.css          設計系統（token + 可組裝的 .ds-* 元件庫 + 氛圍背景）
 │   └── styles.css         App 專屬覆寫
 ├── data/creatives/        產出 JSON（gitignore；每組有 uid、brief 為發想輸入快照）
-├── data/images/           生圖產物（gitignore；每張圖各自 uid，由該組 images[] 引用成相簿）
+├── data/images/<批次id>/  生圖產物（gitignore；依批次分資料夾好翻找，檔名=圖uid 供引用）
+├── data/materials/        參考素材（gitignore；圖直接丟這裡、可用子資料夾分類，名稱=相對路徑；index.json 放可選描述）
 ├── pyproject.toml / uv.lock
 └── README.md / CLAUDE.md
 ```
@@ -82,8 +83,11 @@ AdGenPlugin/
     - `PUT/DELETE /api/creatives/<id>/<uid>` — 編輯回存 / 刪除單組（以 uid 指認）
     - `POST /api/settings/key` — 把 OpenAI key 寫進專案根 `.env`
     - `GET /api/settings` — 只回報 key 是否已設定（**永不回傳 key**）
+  - 素材庫（**把圖丟進 `data/materials/` 即可**，可用子資料夾分類、名稱=相對路徑如 `Dutek/平衡車`，列表時即時遞迴掃描）：
+    - `GET /api/materials` — 素材列表（name + description）
+    - `GET /api/materials/<name>` — 取素材圖；`DELETE` — 刪除
   - 生圖（非同步任務）：
-    - `POST /api/images {id, uid}` — 登記任務即回 202，背景執行緒呼叫 gpt-image-2 → 存 `data/images/<圖uid>.png`
+    - `POST /api/images {id, uid, materials?}` — 登記任務即回 202，背景執行緒呼叫 gpt-image-2（勾選的素材以多模態附給模型）→ 存 `data/images/<圖uid>.png`
     - `GET /api/images/status` — 任務表（前端輪詢用）
     - `GET /api/images/<uid>` — 取圖
 - `migrations.py` — 批次 JSON 的 **schema 版本化遷移**（檔案即演進史）：`SCHEMA_VERSION` + 逐版增量遷移函式；server 讀取時惰性套用（缺版號視為 0、逐版補課、函式需冪等）。
@@ -96,6 +100,6 @@ AdGenPlugin/
   - 看板的編輯／刪除會**回寫**這個檔。
   - 每組創意有穩定 `uid`（生成圖、API 都以它指認）。
   - **brief = 發想時的輸入快照**：`default_offer`/`default_aspect` 只是預設值，卡片的 content／生圖比例可蓋過，分歧是正常演化。
-- `data/images/<圖uid>.png` — 生圖產物（gitignore）：
+- `data/images/<批次id>/<圖uid>.png` — 生圖產物（gitignore；資料夾=批次 id 給人翻找，檔名=圖 uid 供程式引用；舊扁平檔自動相容）：
   - **每張圖各自一個 uid**，由該組 creative 的 `images[]` 清單引用——生圖 append 成相簿、不覆蓋。
   - 刪組時連同清單裡所有圖一起刪。

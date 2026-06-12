@@ -9,7 +9,7 @@
 - 這裡只放「一次性結構變動」（純 dict 轉換）；每次讀取都要做的不變量修補（補 uid/images）在 server.py。
 """
 
-SCHEMA_VERSION = 1  # 目前批次 JSON 的 schema 版本
+SCHEMA_VERSION = 2  # 目前批次 JSON 的 schema 版本
 
 
 def _migrate_0_to_1(d):
@@ -21,8 +21,15 @@ def _migrate_0_to_1(d):
                 brief[new] = brief.pop(old)
 
 
+def _migrate_1_to_2(d):
+    """1 → 2：每組 creative 補 materials（參考素材的名稱清單＝檔名，生圖時會把這些圖附給模型）。"""
+    for c in d.get("creatives") or []:
+        if isinstance(c, dict) and not isinstance(c.get("materials"), list):
+            c["materials"] = []
+
+
 # from-version → 該版到下一版的增量遷移
-_MIGRATIONS = {0: _migrate_0_to_1}
+_MIGRATIONS = {0: _migrate_0_to_1, 1: _migrate_1_to_2}
 
 
 def migrate(d):

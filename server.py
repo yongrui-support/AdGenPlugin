@@ -66,6 +66,66 @@ def _images_dir():
     return os.path.join(os.path.dirname(DIR_CREATIVES), "images")
 
 
+MATERIAL_EXTS = (".png", ".jpg", ".jpeg", ".webp")
+
+
+def _materials_dir():
+    """參考素材目錄 = <data 根>/materials。檔名即名稱即身分（使用者直接丟圖進來即可）；
+    index.json 是可選的描述附加層 {名稱: 外觀描述}，由對話端的 Claude 看圖撰寫。"""
+    return os.path.join(os.path.dirname(DIR_CREATIVES), "materials")
+
+
+def _load_mat_desc():
+    """讀素材描述 {名稱: 描述}；無檔回空 dict。"""
+    p = os.path.join(_materials_dir(), "index.json")
+    if not os.path.isfile(p):
+        return {}
+    try:
+        with open(p, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _scan_materials():
+    """遞迴掃描素材資料夾 → [{name, ext, description}]，依修改時間新到舊。
+    name = 相對路徑（含子資料夾，如「Dutek/平衡車實照」）→ 使用者可用資料夾分品牌/分類。"""
+    d = _materials_dir()
+    if not os.path.isdir(d):
+        return []
+    desc = _load_mat_desc()
+    items = []
+    for root, _dirs, files in os.walk(d):
+        for f in files:
+            stem, ext = os.path.splitext(f)
+            if ext.lower() not in MATERIAL_EXTS:
+                continue
+            rel = os.path.relpath(os.path.join(root, stem), d).replace(os.sep, "/")
+            items.append({
+                "name": rel,
+                "ext": ext.lstrip("."),
+                "description": desc.get(rel, ""),
+                "_mtime": os.path.getmtime(os.path.join(root, f)),
+            })
+    items.sort(key=lambda x: x.pop("_mtime"), reverse=True)
+    return items
+
+
+def _material_path(name):
+    """以名稱（可含子資料夾，如 Dutek/平衡車實照）找素材檔路徑；擋路徑穿越；找不到回 None。"""
+    if not name:
+        return None
+    name = name.replace("\\", "/")
+    if name.startswith("/") or ":" in name or ".." in name.split("/"):
+        return None
+    base = os.path.realpath(_materials_dir())
+    for ext in MATERIAL_EXTS:
+        p = os.path.realpath(os.path.join(base, name + ext))
+        if p.startswith(base + os.sep) and os.path.isfile(p):
+            return p
+    return None
+
+
 @app.route("/")
 def index():
     return send_file(os.path.join(ROOT, "index.html"), mimetype="text/html")
@@ -190,17 +250,34 @@ def _ensure_schema(d):
                 imgs.append(c["uid"])  # 舊版：單張圖以 creative uid 命名 → 納入清單
             c["images"] = imgs
             changed = True
+        if not isinstance(c.get("materials"), list):
+            c["materials"] = []
+            changed = True
     return changed
 
 
+def _find_image(uid):
+    """以圖 uid 找檔案：先試舊版扁平路徑（images/<uid>.png），再掃各批次子資料夾
+    （images/<批次id>/<uid>.png——新版存法，資料夾給人翻、uid 給程式引用）。"""
+    if not uid or uid != os.path.basename(uid) or ".." in uid:
+        return None
+    flat = os.path.join(_images_dir(), uid + ".png")
+    if os.path.isfile(flat):
+        return flat
+    hits = glob.glob(os.path.join(_images_dir(), "*", uid + ".png"))
+    return hits[0] if hits else None
+
+
 def _remove_image(uid):
-    """刪除某 uid 的生成圖（其餘 uid 的圖不受影響）。"""
-    if not uid:
+    """刪除某 uid 的生成圖（其餘 uid 的圖不受影響）；批次子資料夾空了就順手收掉。"""
+    p = _find_image(uid)
+    if not p:
         return
     try:
-        p = os.path.join(_images_dir(), uid + ".png")
-        if os.path.isfile(p):
-            os.remove(p)
+        os.remove(p)
+        parent = os.path.dirname(p)
+        if os.path.realpath(parent) != os.path.realpath(_images_dir()) and not os.listdir(parent):
+            os.rmdir(parent)
     except Exception:
         pass
 
@@ -247,6 +324,42 @@ def api_settings_set_key():
     return jsonify({"ok": True, "openai_key_set": True})
 
 
+# ---------- 參考素材（使用者直接把圖丟進 data/materials/，檔名即名稱）----------
+
+
+@app.route("/api/materials")
+def api_materials_list():
+    """即時掃描素材資料夾（不用上傳——把圖丟進 data/materials/ 即可）。"""
+    return jsonify({"materials": _scan_materials()})
+
+
+@app.route("/api/materials/<path:name>", methods=["GET", "DELETE"])
+def api_material_item(name):
+    """取素材圖（GET）／刪除素材檔（DELETE，連同描述）。以「相對路徑名」指認（可含子資料夾）。"""
+    path = _material_path(name)
+    if request.method == "GET":
+        if not path:
+            return jsonify({"error": "找不到素材"}), 404
+        ext = os.path.splitext(path)[1].lstrip(".").lower()
+        return send_file(path, mimetype="image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}")
+    # DELETE（冪等；creatives 裡殘留的引用無害，生圖時自動略過遺失素材）
+    if path:
+        try:
+            os.remove(path)
+            parent = os.path.dirname(path)  # 子資料夾空了就順手收掉
+            if os.path.realpath(parent) != os.path.realpath(_materials_dir()) and not os.listdir(parent):
+                os.rmdir(parent)
+        except Exception:
+            pass
+        with _JSON_LOCK:
+            desc = _load_mat_desc()
+            if name in desc:
+                desc.pop(name)
+                with open(os.path.join(_materials_dir(), "index.json"), "w", encoding="utf-8") as f:
+                    json.dump(desc, f, ensure_ascii=False, indent=2)
+    return jsonify({"ok": True})
+
+
 # ---------- 生圖（非同步任務：POST 立即回應，背景執行緒慢慢生）----------
 
 # 任務表：creative uid → {"status": "running|done|failed", "error": "", "images": [...]}
@@ -257,14 +370,28 @@ _JOBS_LOCK = threading.Lock()
 _GEN_LIMIT = threading.Semaphore(5)  # 同時打 OpenAI 的上限（改由後端管，前端不再排程）
 
 
-def _generate_image_b64(prompt, size, quality):
-    """用 OpenAI Responses API 的 image_generation 工具生圖，回傳 base64 PNG。"""
+def _generate_image_b64(prompt, size, quality, materials=None):
+    """用 OpenAI Responses API 的 image_generation 工具生圖，回傳 base64 PNG。
+    materials：[(名稱, 描述, 檔案路徑)] —— 每張素材圖前插一個文字「名牌」（名稱＋外觀描述），
+    模型才知道附圖各是誰、該怎麼用，多張素材也不會張冠李戴。"""
     from openai import OpenAI
+
+    content = [{"type": "input_text", "text": prompt}]
+    for i, (name, desc, path) in enumerate(materials or [], 1):
+        label = f"參考素材 {i}：『{name}』"
+        if desc:
+            label += f"——{desc}"
+        content.append({"type": "input_text", "text": label})
+        ext = os.path.splitext(path)[1].lstrip(".").lower()
+        mime = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext or 'png'}"
+        with open(path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode()
+        content.append({"type": "input_image", "image_url": f"data:{mime};base64,{b64}"})
 
     client = OpenAI()  # 自動讀 OPENAI_API_KEY
     resp = client.responses.create(
         model=OPENAI_RESPONSES_MODEL,
-        input=prompt,
+        input=[{"role": "user", "content": content}],
         tools=[{"type": "image_generation", "size": size, "quality": quality}],
     )
     for o in resp.output:
@@ -273,17 +400,18 @@ def _generate_image_b64(prompt, size, quality):
     return None
 
 
-def _image_worker(cid, target_uid, prompt, size, quality):
+def _image_worker(cid, target_uid, prompt, size, quality, materials=None):
     """背景執行緒：慢的 OpenAI 呼叫在這裡跑，完成後寫檔並更新任務表。"""
     try:
         with _GEN_LIMIT:  # 並發上限
-            b64 = _generate_image_b64(prompt, size, quality)
+            b64 = _generate_image_b64(prompt, size, quality, materials)
         if not b64:
             raise RuntimeError("模型未回傳圖片")
         new_uid = uuid.uuid4().hex[:12]
-        images_dir = _images_dir()
-        os.makedirs(images_dir, exist_ok=True)
-        with open(os.path.join(images_dir, new_uid + ".png"), "wb") as f:
+        # 存進「批次 id」子資料夾——批次 id 人類可讀，翻資料夾就找得到某批的圖；引用仍用 uid
+        batch_dir = os.path.join(_images_dir(), cid)
+        os.makedirs(batch_dir, exist_ok=True)
+        with open(os.path.join(batch_dir, new_uid + ".png"), "wb") as f:
             f.write(base64.b64decode(b64))
         # 寫回段（持鎖）：重讀最新 JSON、用 uid 找回該組再 append——不拿舊快照整份覆寫，
         # 並行生圖 / 期間的編輯刪除都不會被洗掉。
@@ -342,12 +470,25 @@ def api_generate_image():
         aspect = body.get("aspect") or (d.get("brief") or {}).get("default_aspect", "1:1")
     size = SIZE_BY_ASPECT.get(aspect, "1024x1024")
     quality = body.get("quality") or "high"
+    # 參考素材：body 帶 materials（名稱清單；未帶則用該組存的）→ 解析成 (名稱, 描述, 路徑)，
+    # 描述取自 index.json（可能為空）；遺失的素材略過
+    mat_names = body.get("materials")
+    if not isinstance(mat_names, list):
+        mat_names = creative.get("materials") or []
+    mat_desc = _load_mat_desc()
+    materials = []
+    for n in mat_names:
+        p = _material_path(n)
+        if p:
+            materials.append((n, mat_desc.get(n, ""), p))
     with _JOBS_LOCK:
         job = _JOBS.get(target_uid)
         if job and job["status"] == "running":  # 後端防連點：同組已在生就拒絕
             return jsonify({"error": "這組正在生成中"}), 409
         _JOBS[target_uid] = {"status": "running", "error": "", "images": []}
-    threading.Thread(target=_image_worker, args=(cid, target_uid, prompt, size, quality), daemon=True).start()
+    threading.Thread(
+        target=_image_worker, args=(cid, target_uid, prompt, size, quality, materials), daemon=True
+    ).start()
     return jsonify({"ok": True, "uid": target_uid, "status": "running"}), 202
 
 
@@ -360,11 +501,9 @@ def api_images_status():
 
 @app.route("/api/images/<uid>")
 def api_get_image(uid):
-    """取用已生成的主視覺 PNG（以 creative uid 命名）。"""
-    if not uid or uid != os.path.basename(uid) or ".." in uid:
-        return jsonify({"error": "bad uid"}), 404
-    path = os.path.join(_images_dir(), uid + ".png")
-    if not os.path.isfile(path):
+    """取用已生成的主視覺 PNG（以圖 uid 指認；新版存於批次子資料夾、舊版扁平檔皆可）。"""
+    path = _find_image(uid)
+    if not path:
         return jsonify({"error": "尚未生成"}), 404
     return send_file(path, mimetype="image/png")
 

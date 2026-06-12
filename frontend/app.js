@@ -41,18 +41,44 @@ createApp({
       gen: {},
       // 共用確認對話框（刪除 / 大量生成共用，抽換內容）
       confirmBox: { show: false, title: '', message: '', okLabel: '確定', cancelLabel: '取消', danger: false },
+      // 素材庫（使用者直接把圖丟進 data/materials/，檔名即名稱；生圖時附給模型）
+      materials: [],
     };
   },
 
   async mounted() {
     await this.loadSets();
     this.refreshKeyState();
+    this.loadMaterials();
   },
 
   computed: {
     // 「進行中」由後端任務表同步到 gen[uid].loading，這裡只是彙總
     runningCount() { return Object.values(this.gen).filter((g) => g.loading).length; },
     anyGenerating() { return this.runningCount > 0; },
+    // 只顯示「跟目前批次有關」的素材：品牌子資料夾（資料夾名=brand_name）+ 根目錄共用
+    // + 這批已引用的（防資料夾改名後勾選消失）。沒選批次時顯示全部。
+    visibleMaterials() {
+      if (!this.current || !this.current.brief) return this.materials;
+      const brand = this.current.brief.brand_name || '';
+      const referenced = new Set((this.current.creatives || []).flatMap((c) => c.materials || []));
+      return this.materials.filter((m) => {
+        const i = m.name.indexOf('/');
+        if (i < 0) return true;                          // 根目錄 = 共用
+        return m.name.slice(0, i) === brand || referenced.has(m.name);
+      });
+    },
+
+    // 素材依子資料夾分組（'' = 根目錄）
+    materialGroups() {
+      const groups = {};
+      this.visibleMaterials.forEach((m) => {
+        const i = m.name.lastIndexOf('/');
+        const dir = i >= 0 ? m.name.slice(0, i) : '';
+        (groups[dir] = groups[dir] || []).push(m);
+      });
+      return Object.keys(groups).sort().map((dir) => ({ dir, items: groups[dir] }));
+    },
   },
 
   methods: {
@@ -109,6 +135,41 @@ createApp({
       }
     },
 
+    // ----- 素材庫（檔名即名稱；加素材 = 把圖丟進 data/materials/ 再按重新整理）-----
+    async loadMaterials() {
+      try {
+        this.materials = (await (await fetch('/api/materials')).json()).materials || [];
+      } catch (e) {
+        console.error('materials', e);
+      }
+    },
+
+    // 名稱可含子資料夾（Dutek/平衡車）→ 逐段編碼、保留斜線
+    matSrc(name) { return '/api/materials/' + name.split('/').map(encodeURIComponent).join('/'); },
+    matShort(name) { return name.split('/').pop(); },
+
+    deleteMaterial(m) {
+      this.askConfirm({
+        title: '刪除素材「' + m.name + '」？',
+        message: '素材檔會從 <code>data/materials</code> 刪除；卡片上殘留的引用會在生圖時自動略過。',
+        okLabel: '刪除',
+        cancelLabel: '取消',
+        danger: true,
+        onConfirm: async () => {
+          await fetch(this.matSrc(m.name), { method: 'DELETE' });
+          await this.loadMaterials();
+        },
+      });
+    },
+
+    // 勾選/取消這張卡的參考素材（記名稱；按「儲存」持久化）
+    toggleMaterial(c, name) {
+      if (!Array.isArray(c.materials)) c.materials = [];
+      const i = c.materials.indexOf(name);
+      if (i >= 0) c.materials.splice(i, 1);
+      else c.materials.push(name);
+    },
+
     // 即時組出「使用說明 + {brief, creative}」（複製 / 生圖共用，反映目前編輯內容）。
     // 送生圖的 payload 刻意瘦身：uid/images（系統欄位）、angle/hook/funnel（策略標籤）、
     // copy 的 headline/cta（與 content 重複）都對生圖無益，只留 primary_text 供語氣參考。
@@ -122,7 +183,13 @@ createApp({
         composition_prompt: c.composition_prompt,
         primary_text: (c.copy && c.copy.primary_text) || undefined,
       };
-      return INSTRUCTION + JSON.stringify({ brief, creative }, null, 2);
+      // 有勾參考素材 → 提醒（看板生圖會自動隨附並逐張掛名牌；複製到外部模型則要手動附圖）
+      const names = c.materials || [];
+      const note = names.length
+        ? '⚠ 此 creative 搭配參考素材：' + names.join('、') +
+          '（隨附的圖即這些素材；若未隨附，請自行把圖一併提供）\n\n'
+        : '';
+      return INSTRUCTION + note + JSON.stringify({ brief, creative }, null, 2);
     },
 
     copy(c) {
@@ -328,7 +395,7 @@ createApp({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           // 送的就是「複製」那份：使用說明 + {brief, creative} JSON，讓 GPT 自行判讀 {{content.x}}
-          body: JSON.stringify({ id: reqId, uid: c.uid, prompt, aspect }),
+          body: JSON.stringify({ id: reqId, uid: c.uid, prompt, aspect, materials: c.materials || [] }),
         });
         const d = await r.json();
         // 已切到別批 → 任務照跑（記在後端），切回來 syncJobs 會接手顯示
