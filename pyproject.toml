@@ -1,7 +1,7 @@
 [project]
-name = "ad-collector"
-version = "1.0.0"
-description = "廣告創意檢視看板（Flask + Vue 3）；素材由 generate-creatives skill 產生"
+name = "ad-generator"
+version = "1.1.0"
+description = "廣告創意產生 + 生圖看板（Flask + Vue 3）；素材由 generate-creatives skill 產生"
 requires-python = ">=3.9"
 dependencies = [
     "flask>=3.0",
