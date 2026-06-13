@@ -8,8 +8,15 @@ const { createApp } = Vue;
 // 給 GPT 的使用說明：界定「哪些要畫進圖、哪些只是情境參考」
 const INSTRUCTION =
   '請依此 creative 的各欄位產生這張廣告主視覺圖：\n' +
-  '・composition_prompt 為主；content 是「圖中要出現的文字」（對應 prompt 裡的 {{content.欄位}} 佔位）；copy 供訊息與語氣參考。\n' +
-  '・brief 僅作品牌背景情境參考。brief / copy 不要當成圖中文字額外畫上去。\n\n';
+  '・composition_prompt 為主；content 是「圖中要出現的文字」（對應 prompt 裡的 {{content.欄位}} 佔位）。\n' +
+  '・primary_text 是貼文文案、brief 是品牌背景，都僅供訊息與語氣參考，不要當成圖中文字畫上去。\n' +
+  '・若 brief 與 creative 內容衝突（如優惠數字、文字措辭），一律以 creative 為準——brief 是發想時的輸入，creative 才是現行版本。\n\n';
+
+// 改圖模式前綴：使用者會把已生成的圖一併附給生圖模型，要求「基於附圖微調」而非重生
+const IMAGE_EDIT_PREFIX =
+  '【改圖模式】請依據附圖作如下改變、其他不變：\n' +
+  '・以附圖為基底，僅調整與下方 creative 最新內容不符之處（如圖中文字、優惠數字、CTA）。\n' +
+  '・構圖、風格、配色、元素一律延續附圖，不要重新發想。\n\n';
 
 createApp({
   data() {
@@ -18,29 +25,57 @@ createApp({
       selectedId: '',
       current: null,    // /api/creatives/<id> 完整內容（creatives 直接以 v-model 編輯）
       loading: false,
-      copiedIdx: -1,
-      savingIdx: -1,
-      savedIdx: -1,
-      deletingIdx: -1,
+      // 暫態 UI 狀態，以 creative uid 指認（'' = 無）
+      copiedUid: '',
+      savingUid: '',
+      savedUid: '',
+      deletingUid: '',
       // 設定 / API key
       showSettings: false,
       apiKeyInput: '',
       keySet: false,
       savingKey: false,
       keyMsg: '',
-      // 生圖狀態（與 creatives 對齊）：{ loading, error, bust, shown }
-      gen: [],
+      // 生圖狀態，以 creative 的 uid 索引：{ uid: { loading（由後端任務表同步）, error, view（看相簿第幾張） } }
+      // 用 uid 不用 index → 刪除/位移不需要重新對齊，其他卡的狀態完全不動
+      gen: {},
       // 共用確認對話框（刪除 / 大量生成共用，抽換內容）
       confirmBox: { show: false, title: '', message: '', okLabel: '確定', cancelLabel: '取消', danger: false },
-      // 大量生成
-      bulkRunning: false,
-      bulkDone: 0,
+      // 素材庫（使用者直接把圖丟進 data/materials/，檔名即名稱；生圖時附給模型）
+      materials: [],
     };
   },
 
   async mounted() {
     await this.loadSets();
     this.refreshKeyState();
+    this.loadMaterials();
+  },
+
+  computed: {
+    // 「進行中」由後端任務表同步到 gen[uid].loading，這裡只是彙總
+    runningCount() { return Object.values(this.gen).filter((g) => g.loading).length; },
+    anyGenerating() { return this.runningCount > 0; },
+    // 只顯示「跟目前批次有關」的素材：品牌子資料夾（資料夾名=brand_name）
+    // + 這批已引用的（防資料夾改名後勾選消失）。沒歸進資料夾的一律不列。
+    visibleMaterials() {
+      const foldered = this.materials.filter((m) => m.name.includes('/'));
+      if (!this.current || !this.current.brief) return foldered;
+      const brand = this.current.brief.brand_name || '';
+      const referenced = new Set((this.current.creatives || []).flatMap((c) => c.materials || []));
+      return foldered.filter((m) => m.name.slice(0, m.name.indexOf('/')) === brand || referenced.has(m.name));
+    },
+
+    // 素材依子資料夾分組（'' = 根目錄）
+    materialGroups() {
+      const groups = {};
+      this.visibleMaterials.forEach((m) => {
+        const i = m.name.lastIndexOf('/');
+        const dir = i >= 0 ? m.name.slice(0, i) : '';
+        (groups[dir] = groups[dir] || []).push(m);
+      });
+      return Object.keys(groups).sort().map((dir) => ({ dir, items: groups[dir] }));
+    },
   },
 
   methods: {
@@ -68,54 +103,137 @@ createApp({
       this.selectedId = id;
       this.loading = true;
       this.current = null;
-      this.gen = [];
-      this.copiedIdx = -1;
+      this.gen = {};
+      this.copiedUid = '';
       try {
         const r = await fetch('/api/creatives/' + encodeURIComponent(id));
-        this.current = await r.json();
+        const data = await r.json();
+        // 快速連切下拉時，慢的舊回應後到會把畫面蓋回舊批（下拉卻是新批）→ 過期就丟棄
+        if (this.selectedId !== id) return;
+        this.current = data;
         const creatives = this.current.creatives || [];
-        // 每組一個狀態：view = 目前在看 images 清單的第幾張（預設看最新一張）
-        this.gen = creatives.map((c) => ({
-          loading: false,
-          error: '',
-          view: Math.max(0, ((c.images && c.images.length) || 1) - 1),
-        }));
+        // 每組一個「視圖狀態」（以 uid 索引）：view = 目前在看相簿第幾張（預設最新）；
+        // aspect = 這組生圖用的比例（預設跟 brief，可逐卡改 → 同組生多種版位比例進同一相簿）。
+        // loading 是領域狀態，真相在後端任務表，由 syncJobs() 同步進來。
+        const briefAspect = (this.current.brief && this.current.brief.default_aspect) || '1:1';
+        const gen = {};
+        creatives.forEach((c) => {
+          gen[c.uid] = {
+            loading: false,
+            error: '',
+            view: Math.max(0, ((c.images && c.images.length) || 1) - 1),
+            aspect: briefAspect,
+          };
+        });
+        this.gen = gen;
+        await this.syncJobs();   // 接回「進行中」→ 重整 / 切批再回來都不失憶
+        if (this.anyGenerating) this.ensurePolling();
       } catch (e) {
         console.error('select', e);
       } finally {
-        this.loading = false;
+        if (this.selectedId === id) this.loading = false;  // 過期請求別關掉新請求的載入中
       }
     },
 
-    // 即時組出「使用說明 + {brief, creative}」（複製 / 生圖共用，反映目前編輯內容）
-    buildPayload(idx) {
-      const brief = (this.current && this.current.brief) || {};
-      const creative = (this.current.creatives || [])[idx];
-      return INSTRUCTION + JSON.stringify({ brief, creative }, null, 2);
+    // ----- 素材庫（檔名即名稱；加素材 = 把圖丟進 data/materials/ 再按重新整理）-----
+    async loadMaterials() {
+      try {
+        this.materials = (await (await fetch('/api/materials')).json()).materials || [];
+      } catch (e) {
+        console.error('materials', e);
+      }
     },
 
-    async copy(idx) {
+    // 名稱可含子資料夾（Dutek/平衡車）→ 逐段編碼、保留斜線
+    matSrc(name) { return '/api/materials/' + name.split('/').map(encodeURIComponent).join('/'); },
+    matShort(name) { return name.split('/').pop(); },
+
+    deleteMaterial(m) {
+      this.askConfirm({
+        title: '刪除素材「' + m.name + '」？',
+        message: '素材檔會從 <code>data/materials</code> 刪除；卡片上殘留的引用會在生圖時自動略過。',
+        okLabel: '刪除',
+        cancelLabel: '取消',
+        danger: true,
+        onConfirm: async () => {
+          await fetch(this.matSrc(m.name), { method: 'DELETE' });
+          await this.loadMaterials();
+        },
+      });
+    },
+
+    // 勾選/取消這張卡的參考素材（記名稱；按「儲存」持久化）
+    toggleMaterial(c, name) {
+      if (!Array.isArray(c.materials)) c.materials = [];
+      const i = c.materials.indexOf(name);
+      if (i >= 0) c.materials.splice(i, 1);
+      else c.materials.push(name);
+    },
+
+    // 即時組出「使用說明 + {brief, creative}」（複製 / 生圖共用，反映目前編輯內容）。
+    // 送生圖的 payload 刻意瘦身：uid/images（系統欄位）、angle/hook/funnel（策略標籤）、
+    // copy 的 headline/cta（與 content 重複）都對生圖無益，只留 primary_text 供語氣參考。
+    buildPayload(c) {
+      const brief = {};
+      Object.entries((this.current && this.current.brief) || {}).forEach(([k, v]) => {
+        if (v !== null && v !== '' && v !== undefined) brief[k] = v;
+      });
+      const creative = {
+        content: c.content,
+        composition_prompt: c.composition_prompt,
+        primary_text: (c.copy && c.copy.primary_text) || undefined,
+      };
+      // 有勾參考素材 → 提醒（看板生圖會自動隨附並逐張掛名牌；複製到外部模型則要手動附圖）
+      const names = c.materials || [];
+      const note = names.length
+        ? '⚠ 此 creative 搭配參考素材：' + names.join('、') +
+          '（隨附的圖即這些素材；若未隨附，請自行把圖一併提供）\n\n'
+        : '';
+      return INSTRUCTION + note + JSON.stringify({ brief, creative }, null, 2);
+    },
+
+    copy(c) {
+      // 這組已有生成圖 → 問要「基於附圖改圖」還是「生新圖」；沒圖就照舊直接複製
+      if (this.imgCount(c) > 0) {
+        this.askConfirm({
+          title: '要基於已生成的圖改圖嗎？',
+          message:
+            '・<b>基於附圖改圖</b>：prompt 會加上「請依據附圖作如下改變、其他不變」——' +
+            '貼到生圖模型時，記得把目前顯示的那張圖<b>一併附上</b>。<br>' +
+            '・<b>生新圖</b>：照原樣複製，讓模型自由發揮。',
+          okLabel: '基於附圖改圖',
+          cancelLabel: '生新圖',
+          onConfirm: () => this._doCopy(c, true),
+          onCancel: () => this._doCopy(c, false),
+        });
+      } else {
+        this._doCopy(c, false);
+      }
+    },
+
+    async _doCopy(c, basedOnImage) {
       try {
-        await navigator.clipboard.writeText(this.buildPayload(idx));
-        this.copiedIdx = idx;
-        setTimeout(() => { if (this.copiedIdx === idx) this.copiedIdx = -1; }, 1500);
+        const text = (basedOnImage ? IMAGE_EDIT_PREFIX : '') + this.buildPayload(c);
+        await navigator.clipboard.writeText(text);
+        this.copiedUid = c.uid;
+        setTimeout(() => { if (this.copiedUid === c.uid) this.copiedUid = ''; }, 1500);
       } catch (e) {
         console.error('copy', e);
       }
     },
 
-    // 回存單組到 <id>.json
-    async saveCreative(idx) {
-      this.savingIdx = idx;
+    // 回存單組到 <id>.json（以 uid 指認）
+    async saveCreative(c) {
+      this.savingUid = c.uid;
       try {
-        const r = await fetch('/api/creatives/' + encodeURIComponent(this.selectedId) + '/' + idx, {
+        const r = await fetch('/api/creatives/' + encodeURIComponent(this.selectedId) + '/' + encodeURIComponent(c.uid), {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ creative: this.current.creatives[idx] }),
+          body: JSON.stringify({ creative: c }),
         });
         if (r.ok) {
-          this.savedIdx = idx;
-          setTimeout(() => { if (this.savedIdx === idx) this.savedIdx = -1; }, 1500);
+          this.savedUid = c.uid;
+          setTimeout(() => { if (this.savedUid === c.uid) this.savedUid = ''; }, 1500);
         } else {
           const d = await r.json().catch(() => ({}));
           alert('儲存失敗：' + (d.error || r.status));
@@ -124,11 +242,13 @@ createApp({
         console.error('save', e);
         alert('儲存失敗：' + e);
       } finally {
-        this.savingIdx = -1;
+        this.savingUid = '';
       }
     },
 
     // ----- 共用確認對話框 -----
+    // onCancel 可選：給「兩顆按鈕＝兩種動作」的對話框用（如複製的改圖/新圖）；
+    // 點背景 = confirmDismiss = 什麼都不做。
     askConfirm(opts) {
       this.confirmBox = {
         show: true,
@@ -139,40 +259,49 @@ createApp({
         danger: !!opts.danger,
       };
       this._confirmAction = opts.onConfirm || null;   // 動作放實例屬性，不進 reactive data
+      this._cancelAction = opts.onCancel || null;
     },
     confirmOk() {
       const fn = this._confirmAction;
-      this.confirmBox.show = false;
-      this._confirmAction = null;
+      this.confirmDismiss();
       if (fn) fn();
     },
     confirmCancel() {
+      const fn = this._cancelAction;
+      this.confirmDismiss();
+      if (fn) fn();
+    },
+    confirmDismiss() {
       this.confirmBox.show = false;
       this._confirmAction = null;
+      this._cancelAction = null;
     },
 
     // 刪除單組（會直接從 JSON 移除，無法復原）
-    deleteCreative(idx) {
+    deleteCreative(c) {
       this.askConfirm({
         title: '確定刪除這組創意？',
         message: '會直接從 <code>data/creatives</code> 的 JSON 移除這組，<b>無法復原</b>。',
         okLabel: '確定刪除',
         cancelLabel: '取消',
         danger: true,
-        onConfirm: () => this._doDelete(idx),
+        onConfirm: () => this._doDelete(c),
       });
     },
 
-    async _doDelete(idx) {
-      this.deletingIdx = idx;
+    async _doDelete(c) {
+      this.deletingUid = c.uid;
       try {
-        const r = await fetch('/api/creatives/' + encodeURIComponent(this.selectedId) + '/' + idx, {
+        const r = await fetch('/api/creatives/' + encodeURIComponent(this.selectedId) + '/' + encodeURIComponent(c.uid), {
           method: 'DELETE',
         });
         if (r.ok) {
           const s = this.sets.find((x) => x.id === this.selectedId);
           if (s) s.count = Math.max(0, s.count - 1);
-          await this.select(this.selectedId);   // 重載 → index / 圖片重新對齊
+          // gen 以 uid 索引 → 本地移除即可，不必整批重載，其他卡的生圖/相簿狀態不受影響
+          const pos = this.current.creatives.indexOf(c);
+          if (pos >= 0) this.current.creatives.splice(pos, 1);
+          delete this.gen[c.uid];
         } else {
           const d = await r.json().catch(() => ({}));
           alert('刪除失敗：' + (d.error || r.status));
@@ -181,7 +310,7 @@ createApp({
         console.error('delete', e);
         alert('刪除失敗：' + e);
       } finally {
-        this.deletingIdx = -1;
+        this.deletingUid = '';
       }
     },
 
@@ -219,58 +348,105 @@ createApp({
       }
     },
 
-    // ----- 生圖 / 圖片切換 -----
-    imgCount(idx) {
-      const c = ((this.current && this.current.creatives) || [])[idx];
+    // ----- 生圖 / 圖片切換（皆以 creative 物件操作，內部用 uid 查狀態） -----
+    genOf(c) {
+      return (c && this.gen[c.uid]) || {};   // 模板讀取用；查無時回空物件避免 undefined
+    },
+
+    imgCount(c) {
       return (c && Array.isArray(c.images) && c.images.length) || 0;
     },
 
-    imgSrc(idx) {
-      const c = ((this.current && this.current.creatives) || [])[idx];
-      const g = this.gen[idx];
-      if (!c || !Array.isArray(c.images) || !c.images.length || !g) return '';
+    imgSrc(c) {
+      const g = this.genOf(c);
+      if (!this.imgCount(c)) return '';
       // 每張圖各自一個 uid（內容不變）→ 網址穩定、免 cache-bust；view 指目前看第幾張
-      const v = Math.min(Math.max(g.view, 0), c.images.length - 1);
+      const v = Math.min(Math.max(g.view || 0, 0), c.images.length - 1);
       return '/api/images/' + c.images[v];
     },
 
-    prevImg(idx) {
-      const g = this.gen[idx]; const n = this.imgCount(idx);
+    prevImg(c) {
+      const g = this.gen[c.uid]; const n = this.imgCount(c);
       if (!g || !n) return;
       g.view = (g.view - 1 + n) % n;   // 環狀切換
     },
-    nextImg(idx) {
-      const g = this.gen[idx]; const n = this.imgCount(idx);
+    nextImg(c) {
+      const g = this.gen[c.uid]; const n = this.imgCount(c);
       if (!g || !n) return;
       g.view = (g.view + 1) % n;
     },
 
-    async generateImage(idx) {
+    // 下單即回（202）：真正的生圖在後端背景執行緒跑，進度靠 syncJobs 輪詢
+    async generateImage(c) {
       if (!this.keySet) { this.openSettings(); return; }
-      const g = this.gen[idx];
-      if (!g || g.loading) return;   // 防呆：已在生成中就忽略重複呼叫（擋同 tick 連點）
-      g.loading = true;
+      const g = c && this.gen[c.uid];
+      if (!c || !g || g.loading) return;
+      const reqId = this.selectedId;
       g.error = '';
+      // 比例：用這張卡選的 aspect；與 brief 不同時在 prompt 補一句，蓋過 composition_prompt 裡寫死的比例
+      const briefAspect = (this.current.brief && this.current.brief.default_aspect) || '1:1';
+      const aspect = g.aspect || briefAspect;
+      let prompt = this.buildPayload(c);
+      if (aspect !== briefAspect) {
+        prompt += '\n（本次輸出比例改為 ' + aspect + '，構圖請依此比例調整，忽略 composition_prompt 中提到的其他比例。）';
+      }
       try {
         const r = await fetch('/api/images', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           // 送的就是「複製」那份：使用說明 + {brief, creative} JSON，讓 GPT 自行判讀 {{content.x}}
-          body: JSON.stringify({ id: this.selectedId, index: idx, prompt: this.buildPayload(idx) }),
+          body: JSON.stringify({ id: reqId, uid: c.uid, prompt, aspect, materials: c.materials || [] }),
         });
         const d = await r.json();
-        if (r.ok) {
-          // 後端回傳更新後的 images 清單；append 不覆蓋，切到最新一張
-          this.current.creatives[idx].images = d.images || [];
-          g.view = Math.max(0, this.current.creatives[idx].images.length - 1);
+        // 已切到別批 → 任務照跑（記在後端），切回來 syncJobs 會接手顯示
+        if (this.selectedId !== reqId) return;
+        if (r.status === 202 || r.status === 409) {  // 已登記（或本來就在跑）→ 進入進行中
+          g.loading = true;
+          this.ensurePolling();
         } else {
           g.error = d.error || '生圖失敗';
         }
       } catch (e) {
         g.error = '生圖失敗：' + e;
-      } finally {
-        g.loading = false;
       }
+    },
+
+    // ----- 任務同步：「進行中」的真相在後端 _JOBS 表，前端只是讀取 -----
+    async syncJobs() {
+      if (!this.current) return;
+      let jobs;
+      try {
+        jobs = (await (await fetch('/api/images/status')).json()).jobs || {};
+      } catch (e) {
+        console.error('syncJobs', e);
+        return;
+      }
+      (this.current.creatives || []).forEach((c) => {
+        const g = c && this.gen[c.uid];
+        const job = c && c.uid ? jobs[c.uid] : null;
+        if (!g || !job) return;
+        if (job.status === 'running') {
+          g.loading = true;                       // 重整 / 切回來也能接上進行中
+        } else if (g.loading && job.status === 'done') {
+          c.images = job.images || [];            // 後端先存 JSON 才標 done → 這份清單可信
+          g.view = Math.max(0, c.images.length - 1);
+          g.loading = false;
+        } else if (g.loading && job.status === 'failed') {
+          g.error = job.error || '生圖失敗';
+          g.loading = false;
+        }
+      });
+    },
+
+    ensurePolling() {
+      if (this._pollTimer) return;
+      this._pollTimer = setInterval(async () => {
+        await this.syncJobs();
+        if (!this.anyGenerating) {               // 沒有進行中了 → 停止輪詢
+          clearInterval(this._pollTimer);
+          this._pollTimer = null;
+        }
+      }, 2500);
     },
 
     // ----- 大量生成 -----
@@ -289,21 +465,8 @@ createApp({
     },
 
     async runBulk() {
-      this.bulkRunning = true;
-      this.bulkDone = 0;
-      const n = (this.current.creatives || []).length;
-      const CONCURRENCY = 5;   // 並發上限：一次最多同時生 5 張，避免撞 OpenAI rate limit
-      let next = 0;
-      const worker = async () => {
-        while (next < n) {
-          const i = next++;
-          await this.generateImage(i);
-          this.bulkDone++;
-        }
-      };
-      // 開 min(CONCURRENCY, n) 條 worker，共享 next 指標把 n 張分著跑
-      await Promise.all(Array.from({ length: Math.min(CONCURRENCY, n) }, worker));
-      this.bulkRunning = false;
+      // 每張都是「下單即回」（generateImage 自帶進行中防呆），排程與並發上限交給後端 semaphore 管
+      for (const c of this.current.creatives || []) await this.generateImage(c);
     },
   },
 }).mount('#app');

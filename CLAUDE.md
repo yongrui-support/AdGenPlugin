@@ -1,7 +1,5 @@
 # CLAUDE.md
 
-本檔提供 Claude Code（claude.ai/code）在此 repo 中工作時的指引。
-
 ## 這是什麼
 
 一個輕量工具：用 **`generate-creatives` skill** 把品牌 brief / 競品參考，產成可投放的
@@ -11,16 +9,20 @@
 
 - 創意的「發想」在 Claude session 裡（`generate-creatives` skill），不是 web app runtime。
 - web 端負責檢視 / 編輯 / 生圖 / 刪除：會**回寫** `data/creatives/<id>.json`、把圖存到 `data/images/`。
-  （早期版本是「純唯讀看板」，現已是可編輯 + 生圖的工作台。）
 
 ## 這是一個 Claude Code plugin（ad-generator）
 
 本 repo 同時是 plugin 與自己的 marketplace。
 
-- 清單：`.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json`（`source: "./"`）。
-- skills 放在 **`skills/<name>/SKILL.md`**（唯一來源；比照 marketingskills，**無 `.claude/`**）：`generate-creatives`（核心，產到使用者專案 `data/creatives/`）、`serve`（看板）、`setup`（裝 brew/scoop→uv）。
-- 開發/測試：改 `skills/`，用 `claude --plugin-dir ./`（skills 變 `/ad-generator:<skill>`）；或 `/plugin marketplace add <本機路徑或 repo>` → `/plugin install ad-generator@ad-generator`（真安裝，連動態定位都驗得到）。
-- **plugin 路徑**：`serve`/`setup` 要跑包內的 `server.py`，靠 **skill 自己的「Base directory」推 plugin 根**（`<skill base>/../..`）—— skill 被呼叫時系統會在開頭提供該 base 的絕對路徑。**不用** `$CLAUDE_PLUGIN_ROOT`（它在 skill bash 不可靠）、也不用 `find ~/.claude`、不靠 cwd。
+- 清單：`.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json`。
+- skills 放在 **`skills/<name>/SKILL.md`**：
+    - `generate-creatives`（核心，產到使用者專案 `data/creatives/`）
+    - `serve`（WebUI 看板）
+    - `setup`（裝 brew/scoop→uv）。
+- 開發/測試：
+    - 開發 `skills/`，用 `claude --plugin-dir ./`
+    - 測試 `/plugin marketplace add <本機路徑或 repo>` → `/plugin install ad-generator@ad-generator`。
+- **plugin 路徑**：`serve`/`setup` 要跑包內的 `server.py`，靠 **skill 自己的「Base directory」推 plugin 根**（`<skill base>/../..`）—— skill 被呼叫時系統會在開頭提供該 base 的絕對路徑。**不用** `$CLAUDE_PLUGIN_ROOT`（它在 skill bash 不可靠）、不靠 cwd。
 
 ## 環境與指令（uv）
 
@@ -28,37 +30,38 @@
 
 ```bash
 uv sync                       # 建立 .venv + 安裝相依
-uv run python server.py       # 啟動看板 → http://localhost:5000
+uv run python server.py       # 啟動看板 → http://localhost:5050
 uv run python server.py --reload   # 開發用：改 server.py 自動重啟（仍 debug=False）
 ```
 
-- 沒有測試套件。改 `server.py` 後用 `import server` 檢查路由能起來。
+- 沒有測試套件。改後端的驗法：
+  1. `import server` —— 只擋語法 / import 錯。
+  2. **打真端點驗行為** —— 對著 `--reload` 的 server 用「臨時批」做往返測試（測完清掉，不碰真資料）。
+  3. 生圖類 —— monkeypatch `_generate_image_b64` 回假圖（不花 OpenAI 錢）。
 - Lint/format：`uv run ruff format .` 與 `uv run ruff check --fix .`（手動跑）。
 
 ## 架構
 
-- `server.py` — Flask 後端。前端靜態檔從 `ROOT`（server.py 所在）服務；**創意資料目錄**用 `--data-dir`（或 `DATA_DIR`）指定，預設 `cwd/data` → plugin 安裝後仍讀**使用者專案**的 `data/`。端點：
-  - 唯讀：`/api/health`、`/api/creatives`（列表）、`/api/creatives/<id>`（單筆；順手補齊每組 `uid`）。
-  - 寫入：`PUT/DELETE /api/creatives/<id>/<idx>`（編輯回存 / 刪除單組）、`POST /api/settings/key`（把 OpenAI key 寫進專案根 `.env`）、`GET /api/settings`（只回報 key 是否設定，**永不回傳 key**）。
-  - 生圖：`POST /api/images`（解析 prompt → Responses API 的 `image_generation` 工具 / gpt-image-2 → 存 `data/images/<uid>.png`）、`GET /api/images/<uid>`（取圖）。
-- 前端 = Vue 3（CDN，不打包）：`index.html`（結構 + 設定/確認 modal）+ `frontend/app.js`（檢視 / 編輯 / 生圖 / 刪除邏輯）+ `frontend/styles.css`。
-- `frontend/theme.css` — **設計系統**：token（CSS 變數）+ 可組裝的 `.ds-*` 元件庫（btn/card/input/badge/surface/modal…）+ 氛圍背景。做新 UI = 套這些 class；改主題只動 `:root` 的 token。
-- `data/creatives/<id>.json` — `generate-creatives` skill 的產出（gitignore）；看板編輯/刪除會回寫。每組有穩定 `uid`。schema 見該 skill 的 SKILL.md。
-- `data/images/<uid>.png` — 生圖產物（gitignore）。以 creative 的 `uid` 命名 → 刪除/排序不影響其他圖。
+架構與端點細節見 **README「架構」**（程式本身請直接讀 code）。開發時要記的：
+
+- 資料目錄用 `--data-dir`（或 `DATA_DIR`）指定，預設 `cwd/data` —— plugin 安裝後讀**使用者專案**的 `data/`，前端靜態檔永遠從 plugin 目錄（`ROOT`）服務。
+- **改 schema**：`migrations.py` 版號 +1、加 `_migrate_N_to_N+1`（需冪等）、SKILL.md 的 schema 同步。
+- **做新 UI**：套 `frontend/theme.css` 的 `.ds-*` 元件；改主題只動 `:root` 的 token。
 
 ## 重要 gotchas（勿誤改）
 
 - `server.py` 開頭強制 stdout/stderr 為 UTF-8 — 避免 Windows cp950 的 `UnicodeEncodeError`，勿移除。
 - Jinja 已停用（`template_folder=None`），`index.html` 以 `send_file` 原始檔服務；勿改用 template 渲染。
-- `static_folder=ROOT, static_url_path=''` 會把整個專案目錄透過 HTTP 服務（`frontend/` 因此可直接取用）。
+- `static_folder=ROOT, static_url_path=''` 會把**整個 plugin 目錄**透過 HTTP 服務——好處是 `frontend/` 免寫路由直接可用；代價是 `server.py` 等檔案也抓得到，且 **dev 模式（cwd=ROOT）下連 `.env` 都會被服務**。靠「只綁 127.0.0.1 + 無 CORS（外站 JS 讀不到回應）+ 本地工具不上雲」緩解，屬已知取捨。
 - 讀寫端點都用 `_safe_read` 驗證 id（擋路徑穿越）；`uid` 也驗 `basename`。
+- **並發鐵則**（threaded=True，並行生圖/編輯/刪除都動同一份 JSON）：凡「讀改寫」creatives JSON 一律包 `_JSON_LOCK`，且**寫回前重讀最新檔、以 uid 找回該組**——拿舊快照整份覆寫會洗掉別人剛寫入的結果。`PUT` 的 `uid`/`images` 一律以磁碟為準（勿改成信任前端）。生圖必須維持**非同步任務**（`_JOBS` 表 + 202 + 輪詢），改回同步會復活「重整失憶／長連線逾時」。`_JOBS` 放記憶體是刻意的（狀態與背景執行緒同生共死）。
 - **OpenAI key 只存後端 `.env`**（`.env` 已 gitignore，勿提交），`GET /api/settings` 不回傳 key；server 只綁 `127.0.0.1`。Responses 主模型用 `OPENAI_RESPONSES_MODEL` 覆寫（預設 `gpt-5.5`，底層生圖為 gpt-image-2）。
 
 ## 程式風格
 
 - Python：4 空格縮排、無 type hints。
 - JS：2 空格縮排、camelCase。
-- 註解中英混用可接受。檔案換行一律 **LF**（`.gitattributes` 強制，部署目標為 Linux/Docker，勿引入 CRLF）。
+- 註解中英混用可接受。檔案換行一律 **LF**（`.gitattributes` 強制——plugin 會在 Windows/macOS/Linux 的使用者機器上跑，勿引入 CRLF）。
 
 ## Git 慣例
 

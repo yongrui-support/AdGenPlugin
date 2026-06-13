@@ -76,9 +76,9 @@
     <!-- 產出選擇列 -->
     <div class="flex flex-wrap items-center gap-3 mb-6">
       <span class="ds-label">文案選擇</span>
-      <select v-if="sets.length" v-model="selectedId" @change="select(selectedId)" :disabled="bulkRunning" class="ds-select">
+      <select v-if="sets.length" v-model="selectedId" @change="select(selectedId)" class="ds-select">
         <option v-for="s in sets" :key="s.id" :value="s.id">
-          {{ (s.brief && s.brief.brand_name + '-' + s.brief.offer) || s.id }} · {{ s.count }} 組{{ s.mode==='copy_only' ? '（補構圖）' : '' }}
+          {{ (s.brief && s.brief.brand_name + '-' + s.brief.default_offer) || s.id }} · {{ s.count }} 組{{ s.mode==='copy_only' ? '（補構圖）' : '' }}
         </option>
       </select>
       <span v-if="!sets.length" class="ds-muted text-sm">
@@ -86,23 +86,47 @@
       </span>
     </div>
 
+    <!-- 素材庫：把圖直接丟進 data/materials/（檔名即名稱），卡片勾選後生圖會附給模型 -->
+    <div class="ds-surface p-4 mb-6 text-sm">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="ds-label">素材庫 <span class="ds-muted font-normal normal-case">· {{ visibleMaterials.length }} 件（只列目前品牌的）</span></div>
+        <div class="flex items-center gap-2">
+          <span class="ds-muted text-xs">丟進 <code>data/materials/&lt;品牌名&gt;/</code>（資料夾名=品牌、檔名=素材名；沒歸資料夾不會列出）→</span>
+          <button @click="loadMaterials" class="ds-btn ds-btn--secondary text-xs px-2.5 py-1">重新整理</button>
+        </div>
+      </div>
+      <div v-for="g in materialGroups" :key="g.dir" class="mt-3">
+        <div v-if="g.dir" class="ds-muted text-xs mb-1.5">📁 {{ g.dir }}</div>
+        <div class="flex flex-wrap gap-3">
+          <div v-for="m in g.items" :key="m.name" class="relative group w-20">
+            <img :src="matSrc(m.name)" :title="m.description || m.name"
+                 class="h-20 w-20 object-cover rounded-lg border border-white/[0.08]" />
+            <div class="ds-muted text-xs mt-1 text-center truncate" :title="m.name">{{ matShort(m.name) }}</div>
+            <button @click="deleteMaterial(m)" title="刪除素材"
+                    class="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full text-xs leading-none hidden group-hover:grid place-items-center"
+                    style="background: #3a3a40; color: #e5707e;">✕</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- brief 面板 -->
     <div v-if="current && current.brief" class="ds-surface p-4 mb-6 text-sm"
          style="border-color: var(--border-accent); background: rgba(94,106,210,0.06);">
       <div class="flex items-center justify-between gap-3 mb-2">
-        <div class="ds-label">品牌 brief</div>
-        <button @click="openBulkConfirm" :disabled="bulkRunning"
+        <div class="ds-label">品牌 brief <span class="ds-muted font-normal normal-case">· 發想時的輸入快照，卡片產出可獨立修改</span></div>
+        <button @click="openBulkConfirm" :disabled="anyGenerating"
                 class="ds-btn ds-btn--primary text-xs px-3 py-1.5 shrink-0">
-          {{ bulkRunning ? ('生成中… ' + bulkDone + '/' + current.creatives.length) : '一鍵生成全部圖' }}
+          {{ anyGenerating ? ('生成中… 剩 ' + runningCount + ' 張') : '一鍵生成全部圖' }}
         </button>
       </div>
       <div class="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2">
         <div><div class="ds-muted text-xs">品牌</div>{{ current.brief.brand_name || '—' }}</div>
         <div v-if="current.brief.product"><div class="ds-muted text-xs">產品</div>{{ current.brief.product }}</div>
-        <div v-if="current.brief.offer"><div class="ds-muted text-xs">優惠</div>{{ current.brief.offer }}</div>
+        <div v-if="current.brief.default_offer"><div class="ds-muted text-xs">預設優惠</div>{{ current.brief.default_offer }}</div>
         <div v-if="current.brief.brand_tone"><div class="ds-muted text-xs">語氣</div>{{ current.brief.brand_tone }}</div>
         <div v-if="current.brief.target_language"><div class="ds-muted text-xs">語言</div>{{ current.brief.target_language }}</div>
-        <div v-if="current.brief.aspect"><div class="ds-muted text-xs">比例</div>{{ current.brief.aspect }}</div>
+        <div v-if="current.brief.default_aspect"><div class="ds-muted text-xs">預設比例</div>{{ current.brief.default_aspect }}</div>
         <div v-if="current.brief.usp && current.brief.usp.length" class="col-span-2 md:col-span-3">
           <div class="ds-muted text-xs">賣點</div>
           <div class="flex flex-wrap gap-1.5 mt-0.5">
@@ -118,7 +142,7 @@
     <!-- 創意卡片 -->
     <div v-if="loading" class="ds-muted py-16 text-center">載入中…</div>
     <div v-else-if="current" class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-      <div v-for="(c, idx) in current.creatives" :key="idx" class="ds-card p-5 space-y-4">
+      <div v-for="c in current.creatives" :key="c.uid" class="ds-card p-5 space-y-4">
 
         <!-- 標籤 + 複製 -->
         <div class="flex items-center justify-between gap-2">
@@ -128,21 +152,28 @@
             <span v-if="c.funnel_stage" class="ds-badge">{{ c.funnel_stage }}</span>
           </div>
           <div class="flex items-center gap-1.5 shrink-0">
-            <button @click="deleteCreative(idx)"
-                    :disabled="deletingIdx === idx || (gen[idx] && gen[idx].loading) || bulkRunning"
+            <button @click="deleteCreative(c)"
+                    :disabled="deletingUid === c.uid || genOf(c).loading"
                     class="ds-btn ds-btn--ghost text-xs px-2.5 py-1" style="color:#e5707e;" title="刪除這組">
-              {{ deletingIdx === idx ? '刪除中…' : '刪除' }}
+              {{ deletingUid === c.uid ? '刪除中…' : '刪除' }}
             </button>
-            <button @click="saveCreative(idx)" :disabled="savingIdx === idx"
+            <button @click="saveCreative(c)" :disabled="savingUid === c.uid"
                     class="ds-btn ds-btn--ghost text-xs px-2.5 py-1">
-              {{ savedIdx === idx ? '✓ 已存' : (savingIdx === idx ? '儲存中…' : '儲存') }}
+              {{ savedUid === c.uid ? '✓ 已存' : (savingUid === c.uid ? '儲存中…' : '儲存') }}
             </button>
-            <button @click="generateImage(idx)" :disabled="(gen[idx] && gen[idx].loading) || bulkRunning"
+            <select v-model="gen[c.uid].aspect" :disabled="genOf(c).loading"
+                    class="ds-select text-xs px-1.5 py-1" title="生圖比例（同組可生多種比例，存進同一相簿）">
+              <option value="1:1">1:1</option>
+              <option value="4:5">4:5</option>
+              <option value="9:16">9:16</option>
+              <option value="16:9">16:9</option>
+            </select>
+            <button @click="generateImage(c)" :disabled="genOf(c).loading"
                     class="ds-btn ds-btn--secondary text-xs px-2.5 py-1">
-              {{ gen[idx] && gen[idx].loading ? '生圖中…' : '生圖' }}
+              {{ genOf(c).loading ? '生圖中…' : '生圖' }}
             </button>
-            <button @click="copy(idx)" class="ds-btn ds-btn--primary text-xs px-2.5 py-1">
-              {{ copiedIdx === idx ? '✓ 已複製' : '複製' }}
+            <button @click="copy(c)" class="ds-btn ds-btn--primary text-xs px-2.5 py-1">
+              {{ copiedUid === c.uid ? '✓ 已複製' : '複製' }}
             </button>
           </div>
         </div>
@@ -176,29 +207,43 @@
                     class="ds-input ds-scroll w-full text-sm" style="resize: vertical;"></textarea>
         </div>
 
+        <!-- 參考素材（勾選後生圖附給模型；記得按「儲存」持久化） -->
+        <div v-if="visibleMaterials.length">
+          <div class="ds-label mb-1.5">參考素材 <span class="ds-muted font-normal normal-case">· 勾選後生圖附給模型</span></div>
+          <div class="flex flex-wrap gap-1.5">
+            <button v-for="m in visibleMaterials" :key="m.name" @click="toggleMaterial(c, m.name)"
+                    class="ds-badge cursor-pointer transition-opacity"
+                    :style="(c.materials || []).includes(m.name)
+                      ? 'border-color: var(--accent-bright); color: var(--accent-bright);'
+                      : 'opacity: 0.45;'">
+              {{ (c.materials || []).includes(m.name) ? '✓ ' : '' }}{{ m.name }}
+            </button>
+          </div>
+        </div>
+
         <!-- 主視覺：可多張（生圖會累積），用 < > 切換 -->
-        <div v-if="gen[idx] && (gen[idx].loading || imgCount(idx) > 0)">
+        <div v-if="genOf(c).loading || imgCount(c) > 0">
           <div class="flex items-center justify-between mb-1.5">
             <div class="ds-label">
-              主視覺<span v-if="imgCount(idx) > 1" class="ds-muted font-normal"> · {{ gen[idx].view + 1 }}/{{ imgCount(idx) }}</span>
+              主視覺<span v-if="imgCount(c) > 1" class="ds-muted font-normal"> · {{ genOf(c).view + 1 }}/{{ imgCount(c) }}</span>
             </div>
-            <div v-if="imgCount(idx) > 1 && !gen[idx].loading" class="flex items-center gap-1">
-              <button @click="prevImg(idx)" class="ds-btn ds-btn--ghost text-sm px-2 py-0.5" title="上一張">‹</button>
-              <button @click="nextImg(idx)" class="ds-btn ds-btn--ghost text-sm px-2 py-0.5" title="下一張">›</button>
+            <div v-if="imgCount(c) > 1 && !genOf(c).loading" class="flex items-center gap-1">
+              <button @click="prevImg(c)" class="ds-btn ds-btn--ghost text-sm px-2 py-0.5" title="上一張">‹</button>
+              <button @click="nextImg(c)" class="ds-btn ds-btn--ghost text-sm px-2 py-0.5" title="下一張">›</button>
             </div>
           </div>
           <!-- 生成中：骨架 + 提示，避免以為當掉而重複按 -->
-          <div v-if="gen[idx] && gen[idx].loading"
+          <div v-if="genOf(c).loading"
                class="ds-surface rounded-lg animate-pulse flex items-center justify-center text-center px-4"
-               style="aspect-ratio: 1 / 1;">
-            <span class="ds-muted text-xs leading-relaxed">🎨 生成中…一張約 10–30 秒，請稍候<br>（別重複按，完成會自動出現）</span>
+               :style="{ aspectRatio: (genOf(c).aspect || '1:1').replace(':', ' / ') }">
+            <span class="ds-muted text-xs leading-relaxed">🎨 生成中…<br>（可重整、切換頁面，完成會自動出現）</span>
           </div>
-          <img v-else :src="imgSrc(idx)" alt="主視覺"
+          <img v-else :src="imgSrc(c)" alt="主視覺"
                class="w-full rounded-lg border border-white/[0.06]" />
-          <div v-if="gen[idx] && gen[idx].error" class="text-xs mt-1" style="color:#e5707e">{{ gen[idx].error }}</div>
+          <div v-if="genOf(c).error" class="text-xs mt-1" style="color:#e5707e">{{ genOf(c).error }}</div>
         </div>
         <!-- 沒有圖但有錯誤時也要顯示 -->
-        <div v-else-if="gen[idx] && gen[idx].error" class="text-xs" style="color:#e5707e">{{ gen[idx].error }}</div>
+        <div v-else-if="genOf(c).error" class="text-xs" style="color:#e5707e">{{ genOf(c).error }}</div>
 
       </div>
     </div>
@@ -234,7 +279,7 @@
 
   <!-- 共用確認對話框（刪除 / 大量生成等抽換內容） -->
   <div v-if="confirmBox.show" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-    <div class="ds-backdrop absolute inset-0" @click="confirmCancel"></div>
+    <div class="ds-backdrop absolute inset-0" @click="confirmDismiss"></div>
     <div class="ds-modal relative w-full max-w-md p-6 space-y-4">
       <h2 class="ds-title text-lg font-semibold">{{ confirmBox.title }}</h2>
       <p class="text-sm leading-relaxed" style="color: var(--fg);" v-html="confirmBox.message"></p>
