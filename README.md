@@ -87,7 +87,7 @@ AdGenPlugin/
 │   └── styles.css         App 專屬覆寫
 ├── data/creatives/        產出 JSON（gitignore；每組有 uid、brief 為發想輸入快照）
 ├── data/images/<批次id>/  生圖產物（gitignore；依批次分資料夾好翻找，檔名=圖uid 供引用）
-├── data/materials/        參考素材（gitignore；圖直接丟這裡、可用子資料夾分類，名稱=相對路徑；index.json 放可選描述）
+├── data/materials/        參考素材（gitignore；圖直接丟這裡、可用子資料夾分類，名稱=相對路徑；index.json 放可選描述；可放 <品牌>/design.md 設計準則供產構圖/生圖遵循）
 ├── pyproject.toml / uv.lock
 └── README.md / CLAUDE.md
 ```
