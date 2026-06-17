@@ -12,7 +12,6 @@
 
 :root {
   /* —— 顏色 —— */
-  --bg-deep: #020203;
   --bg-base: #050506;
   --bg-elevated: #0a0a0c;
   --surface: rgba(255, 255, 255, 0.05);
@@ -29,7 +28,6 @@
 
   /* —— 圓角 —— */
   --r-lg: 8px;
-  --r-xl: 12px;
   --r-2xl: 16px;
 
   /* —— 多層陰影 —— */
@@ -240,14 +238,8 @@ body {
 }
 
 /* ============================================================
-   Utilities：JSON viewer（暗色）/ 細捲軸 / reduced-motion
+   Utilities：細捲軸 / reduced-motion
    ============================================================ */
-.json-viewer {
-  font-family: ui-monospace, Menlo, Consolas, monospace;
-  font-size: 12.5px;
-  line-height: 1.55;
-  color: #c9cdd6;
-}
 .ds-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
 .ds-scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 6px; }
 
