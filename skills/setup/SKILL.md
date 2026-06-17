@@ -1,6 +1,6 @@
 ---
 name: setup
-description: 安裝/設定 Ad Generator（廣告發想機器人）的執行環境，一次把「跑起來＋生圖」需要的都備好：經套件管理器（macOS Homebrew / Windows Scoop）裝 uv 與 Node（nvm，Node 24 LTS）→ uv sync → 備 CDP 瀏覽器（複製啟動腳本、登入 ChatGPT）。觸發詞（含口語與失敗情境）：「幫我設定環境 / 安裝 / 裝環境 / 初始化 / 環境準備 / 配置環境 / 把環境裝好 / 做廣告發想機器人的環境設定 / 第一次使用要準備什麼 / 我要開始用 / 怎麼開始 / 怎麼跑起來 / 準備生圖環境 / setup / install」；以及遇到「缺 uv / 沒裝 uv / 缺 Node 或 npx / uv sync 失敗 / 生圖跑不起來 / MCP 連不到瀏覽器 / serve 或 generate 提示缺工具」等狀況時，也觸發本 skill。
+description: 安裝/設定 Ad Generator（廣告發想機器人）的執行環境，一次把「跑起來＋生圖」需要的都備好：經套件管理器（macOS Homebrew / Windows Scoop）裝 uv 與 Node（nvm，Node 24 LTS）→ uv sync → 備 CDP 瀏覽器（複製啟動腳本、登入 ChatGPT）→ 預核准生圖工具（免每次跳權限框）。觸發詞（含口語與失敗情境）：「幫我設定環境 / 安裝 / 裝環境 / 初始化 / 環境準備 / 配置環境 / 把環境裝好 / 做廣告發想機器人的環境設定 / 第一次使用要準備什麼 / 我要開始用 / 怎麼開始 / 怎麼跑起來 / 準備生圖環境 / setup / install」；以及遇到「缺 uv / 沒裝 uv / 缺 Node 或 npx / uv sync 失敗 / 生圖跑不起來 / MCP 連不到瀏覽器 / serve 或 generate 提示缺工具」等狀況時，也觸發本 skill。
 ---
 
 # setup
@@ -83,8 +83,39 @@ uv sync --project "<PLUGIN_DIR>"
 4. 使用者登入後**即可直接用，不必重啟 Claude Code**（MCP 是用到瀏覽器工具時才連 CDP，Chrome 後開也接得上）。換 port 就設環境變數 `PLAYWRIGHT_CDP_URL`。
    - Windows 上裸 `npx` 已實測可用；萬一某些 Windows 環境 MCP 因 `npx` 解析不到（找不到 `npx.cmd`）起不來：把 `.mcp.json` 的 `"command"` 改成 `"cmd"`、`"args"` 開頭插 `"/c", "npx"`（其餘不動；預設裸 `npx` 是為了跨平台）。
 
-### 6. 回報
-環境就緒（uv、Node、專案相依、CDP 瀏覽器都備好）。接著可：
+### 6. 預核准生圖工具（免生圖時一直跳權限框）
+`generate-images` 會用到 plugin 內建的 playwright MCP 工具（navigate/click/type/upload…），預設**每個動作都會問一次權限**，一次生圖十幾、二十框很煩。**徵得使用者同意後**，把這些工具預先核准。
+
+> ⚠️ 這步會**修改使用者專案的 `.claude/settings.local.json`**（本機級、Claude Code 預設 gitignore、不進他的版控）。動手前先講清楚、徵得同意；用「合併」不覆蓋。
+
+跑這個小腳本（讀現有→合併去重→原子寫回；只 append、不刪別人的設定）：
+```bash
+uv run python - <<'PY'
+import json, os
+d = os.path.join(os.getcwd(), ".claude"); os.makedirs(d, exist_ok=True)
+p = os.path.join(d, "settings.local.json")
+cfg = {}
+if os.path.isfile(p):
+    try: cfg = json.load(open(p, encoding="utf-8"))
+    except Exception: cfg = {}
+perms = cfg.setdefault("permissions", {})
+allow = perms.setdefault("allow", []); ask = perms.setdefault("ask", [])
+for x in ["mcp__plugin_ad-generator_playwright", "Bash(uv run:*)", "Write(data/**)", "Edit(data/**)", "Read(data/**)"]:
+    if x not in allow: allow.append(x)
+for x in ["mcp__plugin_ad-generator_playwright__browser_run_code_unsafe"]:
+    if x not in ask: ask.append(x)
+tmp = p + ".tmp"; json.dump(cfg, open(tmp, "w", encoding="utf-8"), ensure_ascii=False, indent=2); os.replace(tmp, p)
+print("[ok] merged permissions into", p)
+PY
+```
+- **allow `mcp__plugin_ad-generator_playwright`**：授**整個內建 playwright server**（官方明確支援、跨版本最穩、涵蓋所有 `browser_` 工具；`<plugin>` 是 `ad-generator`，連字號保留）。
+- **ask `…__browser_run_code_unsafe`**：任意執行碼維持「每次問」——`ask` 優先級高於 `allow`，會蓋過整包 allow，不會被誤放行。
+- 順帶預核准 `Bash(uv run:*)` 與 `Write/Edit/Read(data/**)`，讓生圖的回寫腳本也免問。
+- 設定在**新 session 才生效**（這個 session 內若還會問，重啟／`/reload-plugins` 後就不會了）。
+- 註：工具識別名是 `mcp__plugin_<plugin>_<server>__<tool>`（plugin-provided MCP 的命名，見 plugin-tutorial §4.5）——和「專案級 `.mcp.json`」的 `mcp__<server>__…` 不同，別把那個寫進來。
+
+### 7. 回報
+環境就緒（uv、Node、專案相依、CDP 瀏覽器、生圖工具權限都備好）。接著可：
 - `/ad-generator:generate-creatives` —— 把品牌 brief 變成多組文案＋構圖 prompt
 - `/ad-generator:generate-images` —— 生主視覺（**核心**：用 CDP 瀏覽器在 ChatGPT 產圖、回寫 JSON）
 - `/ad-generator:serve` —— 開看板檢視／編輯／刪除
