@@ -40,7 +40,7 @@
 2. `/ad-generator:generate-creatives` —— 一步步給品牌資訊，產出多組素材。
 3. `/ad-generator:generate-images` —— 把某批做成主視覺（Claude 開 ChatGPT 分頁生圖、回讀迭代、回寫 JSON）。
 4. `/ad-generator:serve` —— 開看板，每組素材可：
-   - **編輯**：文案／圖中文字／構圖 prompt 直接改、按「儲存」回存；每組可換**比例**。
+   - **編輯**：文案／圖中文字／構圖 prompt 直接改、按「儲存」回存；每組可換**比例**與**生圖路徑**（ChatGPT／Gemini→GPT／Gemini，預設 ChatGPT；物理/方向題用 Gemini→GPT）。
    - **複製 prompt**：把 prompt 帶去外部模型自行生圖（已有圖時會問「基於附圖改圖／生新圖」）。
    - **看主視覺**：`generate-images` 產出的圖**累積成相簿**，用 `‹ ›` 切換；**重刷頁面**即見新圖。
    - **刪除**：移除該組（連同其所有圖）。
@@ -127,4 +127,4 @@ AdGenPlugin/
 ### 並發
 
 - server `threaded=True` → 多請求並行。凡「讀改寫」creatives JSON 一律包 `_JSON_LOCK`（含讀取時的 schema 遷移寫回），擋 server 內多執行緒互蓋。
-- `generate-images` 是**另一個行程**寫同一份 JSON，`_JSON_LOCK` 管不到——兩份 skill（generate-images §4、generate-creatives §5）都遵守「append/寫回前重讀最新檔、以 uid 比對、原子寫入（.tmp→os.replace）」來協調。
+- `generate-images` 是**另一個行程**寫同一份 JSON，`_JSON_LOCK` 管不到——兩份 skill（generate-images §4、generate-creatives §6）都遵守「append/寫回前重讀最新檔、以 uid 比對、原子寫入（.tmp→os.replace）」來協調。

@@ -99,6 +99,7 @@ createApp({
         const gen = {};
         (this.current.creatives || []).forEach((c) => {
           if (!c.aspect) c.aspect = briefAspect;
+          if (!c.pipeline_mode) c.pipeline_mode = 'chatgpt';  // 生圖路徑下拉的預設
           gen[c.uid] = { view: Math.max(0, ((c.images && c.images.length) || 1) - 1) };
         });
         this.gen = gen;

@@ -9,7 +9,7 @@
 - 這裡只放「一次性結構變動」（純 dict 轉換）；每次讀取都要做的不變量修補（補 uid/images）在 server.py。
 """
 
-SCHEMA_VERSION = 2  # 目前批次 JSON 的 schema 版本
+SCHEMA_VERSION = 3  # 目前批次 JSON 的 schema 版本
 
 
 def _migrate_0_to_1(d):
@@ -28,8 +28,15 @@ def _migrate_1_to_2(d):
             c["materials"] = []
 
 
+def _migrate_2_to_3(d):
+    """2 → 3：每組 creative 補 pipeline_mode（生圖路徑；舊資料一律補 "chatgpt"＝現行單走 ChatGPT）。"""
+    for c in d.get("creatives") or []:
+        if isinstance(c, dict) and c.get("pipeline_mode") not in ("chatgpt", "both", "gemini"):
+            c["pipeline_mode"] = "chatgpt"
+
+
 # from-version → 該版到下一版的增量遷移
-_MIGRATIONS = {0: _migrate_0_to_1, 1: _migrate_1_to_2}
+_MIGRATIONS = {0: _migrate_0_to_1, 1: _migrate_1_to_2, 2: _migrate_2_to_3}
 
 
 def migrate(d):

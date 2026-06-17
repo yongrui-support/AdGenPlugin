@@ -255,6 +255,9 @@ def _ensure_schema(d):
         if not isinstance(c.get("materials"), list):
             c["materials"] = []
             changed = True
+        if c.get("pipeline_mode") not in ("chatgpt", "both", "gemini"):
+            c["pipeline_mode"] = "chatgpt"  # 生圖路徑（看板下拉可改）；非法值一律回 chatgpt
+            changed = True
     return changed
 
 
