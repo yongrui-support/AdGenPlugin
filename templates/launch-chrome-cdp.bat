@@ -29,4 +29,6 @@ echo      profile: %PROFILE%
 echo.
 echo  Next: log in to chatgpt.com in that Chrome window, keep it open,
 echo        then (re)start Claude Code so the Playwright MCP attaches.
-timeout /t 4 >nul
+rem  Use ping instead of timeout: timeout fails when stdin is redirected
+rem  (e.g. launched non-interactively via cmd //c).
+ping -n 5 127.0.0.1 >nul

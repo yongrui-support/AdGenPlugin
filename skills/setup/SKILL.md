@@ -100,7 +100,9 @@ if os.path.isfile(p):
     except Exception: cfg = {}
 perms = cfg.setdefault("permissions", {})
 allow = perms.setdefault("allow", []); ask = perms.setdefault("ask", [])
-for x in ["mcp__plugin_ad-generator_playwright", "Bash(uv run:*)", "Write(data/**)", "Edit(data/**)", "Read(data/**)"]:
+for x in ["mcp__plugin_ad-generator_playwright",
+          "Bash(uv run:*)", "Bash(uv sync:*)", "Bash(curl:*)", "Bash(mkdir:*)", "Bash(ls:*)", "Bash(date:*)", "Bash(cmd:*)",
+          "Write(data/**)", "Edit(data/**)", "Read(data/**)"]:
     if x not in allow: allow.append(x)
 for x in ["mcp__plugin_ad-generator_playwright__browser_run_code_unsafe"]:
     if x not in ask: ask.append(x)
@@ -110,7 +112,7 @@ PY
 ```
 - **allow `mcp__plugin_ad-generator_playwright`**：授**整個內建 playwright server**（官方明確支援、跨版本最穩、涵蓋所有 `browser_` 工具；`<plugin>` 是 `ad-generator`，連字號保留）。
 - **ask `…__browser_run_code_unsafe`**：任意執行碼維持「每次問」——`ask` 優先級高於 `allow`，會蓋過整包 allow，不會被誤放行。
-- 順帶預核准 `Bash(uv run:*)` 與 `Write/Edit/Read(data/**)`，讓生圖的回寫腳本也免問。
+- 順帶預核准整個流程實際會用到的 Bash 指令：`uv run`／`uv sync`（跑 server/腳本）、`curl`（探 CDP 埠）、`mkdir`（建素材夾/暫存）、`ls`／`date`（列檔/時間戳）、`cmd`（啟動 Chrome bat），以及 `Write/Edit/Read(data/**)`（回寫圖與素材）。**破壞性的 `rm`／`taskkill` 刻意不放行**，每次問過再做。
 - 設定在**新 session 才生效**（這個 session 內若還會問，重啟／`/reload-plugins` 後就不會了）。
 - 註：工具識別名是 `mcp__plugin_<plugin>_<server>__<tool>`（plugin-provided MCP 的命名，見 plugin-tutorial §4.5）——和「專案級 `.mcp.json`」的 `mcp__<server>__…` 不同，別把那個寫進來。
 
