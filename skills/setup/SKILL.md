@@ -80,8 +80,8 @@ uv sync --project "<PLUGIN_DIR>"
    會開出一台帶 9222 埠的 Chrome（背景、不阻塞）。
 3. **唯一需要「使用者」親手做的事：在那台 Chrome 登入 chatgpt.com**（登入無法自動化、只有真人能做；登一次就好，profile 會記住、下次免登）。
    - 之後**使用者不用再手動開 Chrome**——跑 `generate-images` 時是 Claude 自己探 9222 埠、沒開就幫忙啟動。`serve` 只開看板、不碰 Chrome。
-4. 使用者登入後，（重）啟動 Claude Code 讓 MCP 接上。換 port 就設環境變數 `PLAYWRIGHT_CDP_URL`。
-   - Windows 若 MCP 因 `npx` 解析不到（找不到 `npx.cmd`）起不來：把 `.mcp.json` 的 `"command"` 改成 `"cmd"`、`"args"` 開頭插 `"/c", "npx"`（其餘不動；預設裸 `npx` 是為了跨平台）。
+4. 使用者登入後**即可直接用，不必重啟 Claude Code**（MCP 是用到瀏覽器工具時才連 CDP，Chrome 後開也接得上）。換 port 就設環境變數 `PLAYWRIGHT_CDP_URL`。
+   - Windows 上裸 `npx` 已實測可用；萬一某些 Windows 環境 MCP 因 `npx` 解析不到（找不到 `npx.cmd`）起不來：把 `.mcp.json` 的 `"command"` 改成 `"cmd"`、`"args"` 開頭插 `"/c", "npx"`（其餘不動；預設裸 `npx` 是為了跨平台）。
 
 ### 6. 回報
 環境就緒（uv、Node、專案相依、CDP 瀏覽器都備好）。接著可：
