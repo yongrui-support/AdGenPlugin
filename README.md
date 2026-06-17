@@ -110,7 +110,7 @@ AdGenPlugin/
     - `GET /api/images/<uid>` — 取用 `generate-images` 產出、存在 `data/images/<批次id>/<uid>.png` 的圖
 - **生圖在 plugin 外的瀏覽器、不在 server**：`generate-images` skill 用 CDP 接管 ChatGPT 生圖，再用小腳本把圖存進 `data/images/`、**直接回寫** `data/creatives/<id>.json` 的 `images[]`。server 對此不知情——兩個流程協調靠「寫回前重讀最新檔、以 uid 比對、原子寫入」（見下方並發說明與兩份 SKILL.md）。
 - `migrations.py` — 批次 JSON 的 **schema 版本化遷移**（檔案即演進史）：`SCHEMA_VERSION` + 逐版增量遷移函式；server 讀取時惰性套用（缺版號視為 0、逐版補課、函式需冪等）。
-- `.mcp.json` — plugin 內建的 **Playwright MCP 宣告**（`mcpServers`），隨安裝自動註冊。可攜：CDP 網址 `${PLAYWRIGHT_CDP_URL:-http://127.0.0.1:9222}`、輸出 `${CLAUDE_PLUGIN_DATA:-.browser}/out`，無機器路徑。
+- `.mcp.json` — plugin 內建的 **Playwright MCP 宣告**（`mcpServers`），隨安裝自動註冊。可攜：CDP 網址 `${PLAYWRIGHT_CDP_URL:-http://127.0.0.1:9222}`、輸出 `${CLAUDE_PROJECT_DIR:-.}/.browser/out`（使用者專案內、已 gitignore），無機器路徑。
 - 前端 = Vue 3（CDN，不打包）：
   - `index.html` — 結構 + 確認 modal。
   - `frontend/app.js` — 檢視／編輯／刪除／相簿邏輯（**不打 API、不生圖**）。

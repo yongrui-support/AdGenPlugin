@@ -6,7 +6,7 @@
         "-y",
         "@playwright/mcp@latest",
         "--cdp-endpoint", "${PLAYWRIGHT_CDP_URL:-http://127.0.0.1:9222}",
-        "--output-dir", "${CLAUDE_PLUGIN_DATA:-.browser}/out"
+        "--output-dir", "${CLAUDE_PROJECT_DIR:-.}/.browser/out"
       ]
     }
   }
