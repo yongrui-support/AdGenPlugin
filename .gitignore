@@ -20,6 +20,19 @@ data/
 # Claude Code 本機設定/狀態（skills 在 skills/，.claude 不屬於 plugin，不進版控）
 .claude/
 
+# 註：.mcp.json 現在「進版控」——它是 plugin 內建的 MCP 宣告（可攜，用 ${PLAYWRIGHT_CDP_URL}/${CLAUDE_PLUGIN_DATA}
+# 變數、無機器路徑），安裝者一裝即自動註冊 playwright MCP。使用者特有的登入態不放這裡（見下方 .browser/）。
+
+# 使用者本機的瀏覽器登入態（CDP Chrome profile/screenshot 輸出/啟動腳本）——機密、機器專屬，絕不進版控。
+# setup 會在「使用者專案」底下建這個資料夾；登入資訊只存在使用者端。
+.browser/
+
+# MCP 瀏覽器截圖暫存（本機實驗用，不進版控）
+experiments/
+
+# 任務暫存資料夾（生圖下載/回讀的中間檔都寫這，任務完成清空，不進版控）
+tmp/
+
 # OS / editor
 .DS_Store
 Thumbs.db
