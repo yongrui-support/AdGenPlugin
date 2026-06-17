@@ -158,9 +158,8 @@
               <option value="16:9">16:9</option>
             </select>
             <select v-model="c.pipeline_mode" class="ds-select text-xs px-1.5 py-1"
-                    title="生圖路徑（存進 JSON；生圖 skill 依此選模型）：ChatGPT＝單走 ChatGPT；Gemini→GPT＝Gemini 打底再 GPT 收尾（物理/方向題）；Gemini＝只用 Gemini">
+                    title="生圖路徑（存進 JSON；生圖 skill 依此選模型）：ChatGPT＝預設、品質最穩；Gemini＝實測不穩，僅手動指定才用">
               <option value="chatgpt">ChatGPT</option>
-              <option value="both">Gemini→GPT</option>
               <option value="gemini">Gemini</option>
             </select>
             <button @click="copy(c)" class="ds-btn ds-btn--primary text-xs px-2.5 py-1">

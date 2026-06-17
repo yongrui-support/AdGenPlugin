@@ -29,9 +29,10 @@ def _migrate_1_to_2(d):
 
 
 def _migrate_2_to_3(d):
-    """2 → 3：每組 creative 補 pipeline_mode（生圖路徑；舊資料一律補 "chatgpt"＝現行單走 ChatGPT）。"""
+    """2 → 3：每組 creative 補 pipeline_mode（生圖路徑；缺值/非法一律補 "chatgpt"＝預設單走 ChatGPT）。
+    有效值只有 "chatgpt"／"gemini"（"gemini" 僅使用者手動選；已移除的 "both" 會被正規化回 "chatgpt"）。"""
     for c in d.get("creatives") or []:
-        if isinstance(c, dict) and c.get("pipeline_mode") not in ("chatgpt", "both", "gemini"):
+        if isinstance(c, dict) and c.get("pipeline_mode") not in ("chatgpt", "gemini"):
             c["pipeline_mode"] = "chatgpt"
 
 
