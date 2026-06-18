@@ -9,7 +9,20 @@
 - 這裡只放「一次性結構變動」（純 dict 轉換）；每次讀取都要做的不變量修補（補 uid/images）在 server.py。
 """
 
-SCHEMA_VERSION = 3  # 目前批次 JSON 的 schema 版本
+SCHEMA_VERSION = 4  # 目前批次 JSON 的 schema 版本
+
+# 各 AI 平台可選的模型／思考程度（**第一個＝最新/最高＝預設**）。
+# 看板下拉、遷移、server 預設共用此表；前端 app.js 有一份對應的硬編，改這裡記得同步。
+PLATFORM_OPTIONS = {
+    "chatgpt": {"model": ["5.5", "5.4", "5.3", "o3"], "thinking_effort": ["高", "中等", "即時"]},
+    "gemini": {"model": ["3.1 Pro", "3.5 Flash", "3.1 Flash-Lite"], "thinking_effort": ["延長", "標準"]},
+}
+
+
+def platform_defaults(plat):
+    """回傳該平台的 (預設 model, 預設 thinking_effort)＝各自清單第一個（最新/最高）。"""
+    o = PLATFORM_OPTIONS.get(plat) or PLATFORM_OPTIONS["chatgpt"]
+    return o["model"][0], o["thinking_effort"][0]
 
 
 def _migrate_0_to_1(d):
@@ -36,8 +49,25 @@ def _migrate_2_to_3(d):
             c["pipeline_mode"] = "chatgpt"
 
 
+def _migrate_3_to_4(d):
+    """3 → 4：`pipeline_mode` 改名 `ai_platform`；每組新增 `model`（依平台預設最新）、
+    `thinking_effort`（依平台預設最高）。生圖時要切到對的平台＋模型＋思考程度。"""
+    for c in d.get("creatives") or []:
+        if not isinstance(c, dict):
+            continue
+        plat = c.pop("pipeline_mode", None) or c.get("ai_platform")
+        if plat not in ("chatgpt", "gemini"):
+            plat = "chatgpt"
+        c["ai_platform"] = plat
+        dm, dt = platform_defaults(plat)
+        if not c.get("model"):
+            c["model"] = dm
+        if not c.get("thinking_effort"):
+            c["thinking_effort"] = dt
+
+
 # from-version → 該版到下一版的增量遷移
-_MIGRATIONS = {0: _migrate_0_to_1, 1: _migrate_1_to_2, 2: _migrate_2_to_3}
+_MIGRATIONS = {0: _migrate_0_to_1, 1: _migrate_1_to_2, 2: _migrate_2_to_3, 3: _migrate_3_to_4}
 
 
 def migrate(d):

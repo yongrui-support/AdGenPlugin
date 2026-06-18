@@ -133,14 +133,9 @@
     <div v-else-if="current" class="grid grid-cols-1 lg:grid-cols-2 gap-5">
       <div v-for="c in current.creatives" :key="c.uid" class="ds-card p-5 space-y-4">
 
-        <!-- 標籤 + 複製 -->
-        <div class="flex items-center justify-between gap-2">
-          <div class="flex flex-wrap gap-1.5">
-            <span v-if="c.angle" class="ds-badge">{{ c.angle }}</span>
-            <span v-if="c.hook_formula" class="ds-badge">{{ c.hook_formula }}</span>
-            <span v-if="c.funnel_stage" class="ds-badge">{{ c.funnel_stage }}</span>
-          </div>
-          <div class="flex items-center gap-1.5 shrink-0">
+        <!-- 操作列 + 策略標籤（分兩列，避免標籤被工具列擠壓）-->
+        <div class="space-y-2">
+          <div class="flex flex-wrap items-center gap-1.5">
             <button @click="deleteCreative(c)"
                     :disabled="deletingUid === c.uid"
                     class="ds-btn ds-btn--ghost text-xs px-2.5 py-1" style="color:#e5707e;" title="刪除這組">
@@ -157,14 +152,28 @@
               <option value="9:16">9:16</option>
               <option value="16:9">16:9</option>
             </select>
-            <select v-model="c.pipeline_mode" class="ds-select text-xs px-1.5 py-1"
-                    title="生圖路徑（存進 JSON；生圖 skill 依此選模型）：ChatGPT＝預設、品質最穩；Gemini＝實測不穩，僅手動指定才用">
+            <select v-model="c.ai_platform" @change="onPlatformChange(c)" class="ds-select text-xs px-1.5 py-1"
+                    title="AI 平台（存進 JSON；生圖 skill 依此切平台）：ChatGPT＝預設、品質最穩；Gemini＝實測不穩，僅手動指定才用。換平台會把下面模型/思考重設成該平台預設。">
               <option value="chatgpt">ChatGPT</option>
               <option value="gemini">Gemini</option>
+            </select>
+            <select v-model="c.model" class="ds-select text-xs px-1.5 py-1"
+                    title="模型（依平台變；存進 JSON，生圖時切到這個模型）">
+              <option v-for="m in modelOptions(c)" :key="m" :value="m">{{ m }}</option>
+            </select>
+            <select v-model="c.thinking_effort" class="ds-select text-xs px-1.5 py-1"
+                    title="思考程度（依平台變；存進 JSON，生圖時切到這個思考程度）">
+              <option v-for="t in thinkingOptions(c)" :key="t" :value="t">{{ t }}</option>
             </select>
             <button @click="copy(c)" class="ds-btn ds-btn--primary text-xs px-2.5 py-1">
               {{ copiedUid === c.uid ? '✓ 已複製' : '複製 prompt' }}
             </button>
+          </div>
+          <!-- 策略標籤（切角／hook／漏斗）：獨立一列，不被工具列擠壓 -->
+          <div v-if="c.angle || c.hook_formula || c.funnel_stage" class="flex flex-wrap gap-1.5">
+            <span v-if="c.angle" class="ds-badge">{{ c.angle }}</span>
+            <span v-if="c.hook_formula" class="ds-badge">{{ c.hook_formula }}</span>
+            <span v-if="c.funnel_stage" class="ds-badge">{{ c.funnel_stage }}</span>
           </div>
         </div>
 

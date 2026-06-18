@@ -255,8 +255,20 @@ def _ensure_schema(d):
         if not isinstance(c.get("materials"), list):
             c["materials"] = []
             changed = True
-        if c.get("pipeline_mode") not in ("chatgpt", "gemini"):
-            c["pipeline_mode"] = "chatgpt"  # 生圖路徑（看板下拉可改）；缺值/非法/舊 both 一律回 chatgpt
+        # 生圖平台/模型/思考（看板下拉可改）：rename 舊 pipeline_mode、補缺、非法回平台預設
+        old_plat = c.pop("pipeline_mode", None)
+        plat = c.get("ai_platform") or old_plat
+        if plat not in ("chatgpt", "gemini"):
+            plat = "chatgpt"
+        if old_plat is not None or c.get("ai_platform") != plat:
+            c["ai_platform"] = plat
+            changed = True
+        dm, dt = migrations.platform_defaults(plat)
+        if not c.get("model"):
+            c["model"] = dm
+            changed = True
+        if not c.get("thinking_effort"):
+            c["thinking_effort"] = dt
             changed = True
     return changed
 

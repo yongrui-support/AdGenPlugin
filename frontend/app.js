@@ -19,6 +19,12 @@ const IMAGE_EDIT_PREFIX =
   '・以附圖為基底，僅調整與下方 creative 最新內容不符之處（如圖中文字、優惠數字、CTA）。\n' +
   '・構圖、風格、配色、元素一律延續附圖，不要重新發想。\n\n';
 
+// 各 AI 平台可選的模型/思考（陣列第一個＝預設＝最新/最高）。要與 migrations.py 的 PLATFORM_OPTIONS 同步。
+const PLATFORM_OPTIONS = {
+  chatgpt: { model: ['5.5', '5.4', '5.3', 'o3'], thinking_effort: ['高', '中等', '即時'] },
+  gemini: { model: ['3.1 Pro', '3.5 Flash', '3.1 Flash-Lite'], thinking_effort: ['延長', '標準'] },
+};
+
 createApp({
   data() {
     return {
@@ -99,7 +105,10 @@ createApp({
         const gen = {};
         (this.current.creatives || []).forEach((c) => {
           if (!c.aspect) c.aspect = briefAspect;
-          if (!c.pipeline_mode) c.pipeline_mode = 'chatgpt';  // 生圖路徑下拉的預設
+          if (!c.ai_platform) c.ai_platform = 'chatgpt';  // 生圖平台下拉的預設
+          const opt = PLATFORM_OPTIONS[c.ai_platform] || PLATFORM_OPTIONS.chatgpt;
+          if (!c.model) c.model = opt.model[0];                  // 模型預設＝該平台最新
+          if (!c.thinking_effort) c.thinking_effort = opt.thinking_effort[0];  // 思考預設＝該平台最高
           gen[c.uid] = { view: Math.max(0, ((c.images && c.images.length) || 1) - 1) };
         });
         this.gen = gen;
@@ -143,6 +152,16 @@ createApp({
       const i = c.materials.indexOf(name);
       if (i >= 0) c.materials.splice(i, 1);
       else c.materials.push(name);
+    },
+
+    // ----- 生圖平台/模型/思考下拉（選項依平台變；儲存才生效） -----
+    modelOptions(c) { return (PLATFORM_OPTIONS[c.ai_platform] || PLATFORM_OPTIONS.chatgpt).model; },
+    thinkingOptions(c) { return (PLATFORM_OPTIONS[c.ai_platform] || PLATFORM_OPTIONS.chatgpt).thinking_effort; },
+    // 換平台 → 模型/思考重設成新平台的預設（避免殘留別平台的無效值）
+    onPlatformChange(c) {
+      const opt = PLATFORM_OPTIONS[c.ai_platform] || PLATFORM_OPTIONS.chatgpt;
+      c.model = opt.model[0];
+      c.thinking_effort = opt.thinking_effort[0];
     },
 
     // 即時組出「使用說明 + {brief, creative}」（複製 prompt 用，反映目前編輯內容）。

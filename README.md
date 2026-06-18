@@ -40,7 +40,7 @@
 2. `/ad-generator:generate-creatives` —— 一步步給品牌資訊，產出多組素材。
 3. `/ad-generator:generate-images` —— 把某批做成主視覺（Claude 開 ChatGPT 分頁生圖、回讀迭代、回寫 JSON）。
 4. `/ad-generator:serve` —— 開看板，每組素材可：
-   - **編輯**：文案／圖中文字／構圖 prompt 直接改、按「儲存」回存；每組可換**比例**與**生圖路徑**（ChatGPT／Gemini，預設 ChatGPT；Gemini 不穩、僅手動指定才用）。
+   - **編輯**：文案／圖中文字／構圖 prompt 直接改、按「儲存」回存；每組可換**比例**，以及**生圖的 AI 平台／模型／思考程度**（ChatGPT 預設 5.5＋高、Gemini 預設 3.1 Pro＋延長；選項依平台變、儲存才生效。Gemini 不穩、僅手動指定才用）。
    - **複製 prompt**：把 prompt 帶去外部模型自行生圖（已有圖時會問「基於附圖改圖／生新圖」）。
    - **看主視覺**：`generate-images` 產出的圖**累積成相簿**，用 `‹ ›` 切換；**重刷頁面**即見新圖。
    - **刪除**：移除該組（連同其所有圖）。
