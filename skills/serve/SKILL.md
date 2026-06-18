@@ -1,13 +1,13 @@
 ---
 name: serve
-description: 啟動 Ad Generator 的廣告 WebUI / 看板（Flask，http://localhost:5050）來檢視、編輯、刪除 generate-creatives 產出的廣告素材，並可填入 OpenAI key 後直接生成主視覺。當使用者說「開啟廣告 WebUI / 打開廣告介面 / 開看板 / 啟動看板 / 開網頁看素材 / 把 server 跑起來 / 啟動服務」等，觸發。會用 skill 自己的位置定位 plugin 內的 server.py，並讀取你目前專案的 data/creatives。
+description: 啟動 Ad Generator 的廣告 WebUI / 看板（Flask，http://localhost:5050）來檢視、編輯、刪除 generate-creatives 產出的廣告素材，並顯示 generate-images 產出的主視覺。觸發詞（含口語與意圖）：「開啟廣告 WebUI / 打開廣告介面 / 開看板 / 啟動看板 / 開網頁看素材 / 把 server 跑起來 / 啟動服務 / 開介面 / 開 UI / 開前端 / 開 dashboard / 把看板打開 / 開網頁 / 跑起來看 / 我要看創意 / 我想看產出的圖 / 看一下做好的廣告 / 檢視素材 / 預覽素材 / 顯示創意 / 我要編輯素材（要先開看板）/ 打開 localhost:5050 / 開 5050」等。會用 skill 自己的位置定位 plugin 內的 server.py，並讀取你目前專案的 data/creatives。
 ---
 
 # serve
 
 啟動看板。看板顯示**目前專案 `./data/creatives`** 底下的創意產出（generate-creatives 寫在那），
-可檢視、**編輯回存、刪除**，也能填入 OpenAI key 後直接呼叫 gpt-image-2 生成主視覺（存到 `./data/images`）。
-plugin 內含 Flask 後端與 Vue 前端；key 只存後端 `.env`、server 只綁 127.0.0.1。
+可檢視、**編輯回存、刪除、調比例**，並顯示 `./data/images` 裡的主視覺（由 `generate-images` skill 產出後回寫）。
+plugin 內含 Flask 後端與 Vue 前端；**看板不打 API、不生圖**（生圖在 generate-images skill），server 只綁 127.0.0.1。
 
 ## 步驟
 
@@ -36,5 +36,5 @@ uv run --project "<PLUGIN_DIR>" python "<PLUGIN_DIR>/server.py" --data-dir "$(pw
 ## 注意
 
 - 看板沒資料 = 還沒產 → 先用 `/ad-generator:generate-creatives`。
-- 要在看板生圖，需先在右上「設定」填 OpenAI API key（存到專案根 `.env`，已 gitignore）。
+- 要生主視覺 → 用 `/ad-generator:generate-images`（agent 用 CDP 瀏覽器產圖、回寫 JSON）；產完**重刷看板頁面**即可看到。看板本身不生圖。
 - 預設 port **5050**（刻意避開 macOS AirPlay 接收器佔用的 5000）；只綁 `127.0.0.1`、`debug=False`。若啟動報 port 被占，改跑別的 `--port` 並告知使用者實際網址。

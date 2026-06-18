@@ -26,11 +26,16 @@ AdGenPlugin/
 ├── .claude-plugin/
 │   ├── plugin.json        # plugin 清單
 │   └── marketplace.json   # 讓 repo 自己當 marketplace（source: "./"）
+├── .mcp.json              # 內建 MCP server 宣告（Playwright；隨安裝自動註冊，見 §4.5/§4.6）
 ├── skills/
 │   ├── generate-creatives/SKILL.md
+│   ├── generate-images/SKILL.md
 │   ├── serve/SKILL.md
 │   └── setup/SKILL.md
+├── templates/             # 夾帶的範本（setup 複製到使用者專案，如 CDP 啟動腳本）
+├── docs/                  # 教學/觀念文件（本檔在此）
 ├── server.py、frontend/、index.html   # 夾帶的 webui（非典型用法）
+├── migrations.py          # 夾帶資料的 schema 版本化遷移
 ├── pyproject.toml / uv.lock
 └── README.md / CLAUDE.md
 ```
@@ -158,6 +163,40 @@ uv run --project "<PLUGIN_DIR>" python "<PLUGIN_DIR>/server.py" --data-dir "$(pw
 
 ---
 
+## 4.6 路徑變數與環境變數展開（ROOT / DATA / PROJECT_DIR）
+
+Claude Code 跑 plugin 時會注入幾個路徑變數，**只在「真的被安裝/啟用」時才有值**（dev 用 `--plugin-dir`／在 repo 裡跑通常沒注入）。三個主角：
+
+| 變數 | 指向 | 可寫？ | `/plugin update` 後 | 拿來做什麼 |
+|------|------|--------|---------------------|-----------|
+| `${CLAUDE_PLUGIN_ROOT}` | plugin **安裝目錄** | 當**唯讀** | 被換掉（更新即覆蓋） | 指「隨 plugin 發佈的檔」：腳本、設定、範本 |
+| `${CLAUDE_PLUGIN_DATA}` | plugin **專屬持久資料夾** | **可寫** | **保留**（不清） | 快取、輸出、要跨更新存活的狀態 |
+| `${CLAUDE_PROJECT_DIR}` | **使用者專案根** | 可寫 | — | 指使用者專案裡的檔（`.env`、`data/`…） |
+
+口訣：**ROOT = 唯讀程式碼/資源、DATA = 可寫持久狀態、PROJECT_DIR = 使用者那邊。**
+（註：本專案的執行期輸出/暫存**都選 `PROJECT_DIR`、刻意不用 `DATA`**——理由見下面「我們的取捨」。）
+
+### 展開語法（在 JSON 設定裡）
+- `${VAR}` — 代入該變數值；**沒設又沒給預設 → Claude Code 解析設定會直接失敗**。
+- `${VAR:-預設值}` — 有設用設的、沒設用預設（保險，強烈建議都帶）。
+- 不只 CLAUDE_* 那幾個，**任何環境變數**都能引用（例：`${PLAYWRIGHT_CDP_URL:-http://127.0.0.1:9222}`）。
+- 細節：**使用者自訂**的 `.mcp.json` 引用 `${CLAUDE_PROJECT_DIR}` 要帶預設（`${CLAUDE_PROJECT_DIR:-.}`）；**plugin 內建**的 `${CLAUDE_PLUGIN_ROOT}` 不用帶。
+
+### ⚠️ 哪裡可靠、哪裡不可靠（會踩）
+- ✅ **JSON 設定（`.mcp.json` / `hooks.json`）裡這些變數可靠展開。**
+- ❌ **skill markdown 觸發的 bash 裡 `$CLAUDE_PLUGIN_ROOT` 是壞的**（見 §4 坑 1）→ 用「Base directory」推 plugin 根。
+- ⚠️ `$CLAUDE_PLUGIN_DATA` 在 skill bash 是否注入，**我們還沒實機驗過**（同一家族、同風險）。所以 skill bash 裡**要寫檔，別賭它**。
+
+### 我們的取捨（對照最好懂）
+- **`.mcp.json`（JSON，可靠）**：`--cdp-endpoint ${PLAYWRIGHT_CDP_URL:-http://127.0.0.1:9222}`、`--output-dir ${CLAUDE_PROJECT_DIR:-.}/.browser/out`（MCP 輸出與生圖暫存**同站、都放使用者專案 `.browser/`**、已 gitignore、plugin 全程不被寫——**刻意不用 `CLAUDE_PLUGIN_DATA`**：免得多處說法打架，也不必賭它在 skill bash 到底有沒有注入）。
+- **skill bash（不賭變數）**：暫存檔寫**使用者專案的 `.browser/tmp/`**（`${CLAUDE_PROJECT_DIR:-$(pwd)}/.browser/tmp`，cwd=使用者專案可靠、保證可寫），收尾清掉。原則：**plugin 維持唯讀乾淨、寫入都落使用者端**。
+- **定位包內檔**（`server.py`/`templates/`）：從 skill 的 Base directory 推，**不用** `$CLAUDE_PLUGIN_ROOT`。
+
+### dev vs 真安裝
+dev（`--plugin-dir` 或 repo 內）通常**沒注入** CLAUDE_* → 全走 `:-` 後面的 fallback；所以**每個變數都務必帶預設**，否則沒注入時直接解析失敗。**只有真的 `/plugin install` 起來，才看得到這些變數實際被填成什麼**——值得在那關專門驗一次（尤其 skill bash 到底拿不拿得到 `$CLAUDE_PLUGIN_DATA`）。
+
+---
+
 ## 5. 發佈與安裝
 
 ### 基本指令速查
@@ -224,6 +263,7 @@ claude --plugin-dir .                          # 直接把當前 repo 當 plugin
 - [ ] 會裝軟體/有副作用的 skill → `disable-model-invocation: true`
 - [ ] 發版：bump `plugin.json` 的 `version` + **合進 `main`** + push（只 push 個人分支不會被抓；`marketplace.json` 版號不影響更新）
 - [ ] 要跑包內程式 → 用「Base directory」推 plugin 根，**勿**靠 `$CLAUDE_PLUGIN_ROOT`/cwd
+- [ ] 路徑變數（§4.6）：JSON 設定可用 `${CLAUDE_PLUGIN_ROOT/DATA}`；skill bash 不可靠 → 寫檔走使用者專案、變數一律帶 `:-預設`
 - [ ] 夾帶 server → 資料目錄用 `--data-dir` 指向使用者專案
 - [ ] **真的安裝/`--plugin-dir` 跑過一輪**（不只 import）
 - [ ] push 上 GitHub 才能分發
