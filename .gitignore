@@ -27,9 +27,6 @@ data/
 # setup 會在「使用者專案」底下建這個資料夾；登入資訊只存在使用者端。
 .browser/
 
-# MCP 瀏覽器截圖暫存（本機實驗用，不進版控）
-experiments/
-
 # 開發階段的暫存夾（在這個 repo 內做 plugin 開發時，讀 JSON/dump 等中間檔寫這、用完清掉，不進版控）
 # 注意：這跟「生圖 skill 下載暫存」是兩回事——後者寫使用者專案的 .browser/tmp，見 generate-images SKILL。
 tmp/
