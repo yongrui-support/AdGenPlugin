@@ -1,7 +1,7 @@
 {
   "name": "ad-generator",
   "description": "把品牌 brief 變成可投放的廣告素材：文案 + 構圖 prompt（generate-creatives）；用 CDP 接管 ChatGPT 生主視覺、回寫 JSON（generate-images）；附看板（serve，檢視/編輯/刪除）與環境安裝（setup）。",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "author": {
     "name": "Allen Chen"
   },
