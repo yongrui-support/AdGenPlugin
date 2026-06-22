@@ -86,7 +86,8 @@ Claude 用 Bash/PowerShell 跑啟動腳本 ＝ 等同人類雙擊，效果一樣
 
 **操作流程（`mcp__playwright__*`；關鍵：先全部送出、再統一等待收圖）**：
 1. **逐分頁點火，彼此不等**：對每一組——`browser_tabs` 開新分頁 → 開新對話 → **先切模型與思考（務必）：把模型挑成該組 `model`（如 GPT‑5.5）、思考程度挑成該組 `thinking_effort`（即時/中等/高），畫面確認切到了** → 按 `Control+u`（或點 `composer-plus-btn`）開檔案選擇器 → `browser_file_upload` 附該組素材 → 在 `#prompt-textarea` 貼該組 prompt → **送出後立刻切到下一個分頁做同樣的事，不要在這裡等生圖**。
-2. **N 個都送出後，用 ~20 秒短間隔輪詢截圖**看好了沒、**出圖就收**（單張常 ~30–50 秒甚至更短；**別死等 1–2 分鐘，純浪費時間**）。
+2. **N 個都送出後，Claude 自己直接輪詢**（`browser_evaluate`／截圖）看好了沒、**出圖就收**（單張常 ~30–40 秒甚至更短）。**不要自己加 `sleep`／等待指令**——光是每次輪詢工具呼叫本身的 round-trip（snapshot/evaluate 上傳下載 token）就已耗去數十秒，自然就拉開了間隔；再加 sleep 純浪費時間。沒好就再輪詢一次即可，**別死等 1–2 分鐘**。
+   - ⚠️ **Claude 必須「自己」輪詢、絕不要問使用者「好了沒／圖出來了嗎」**：等圖是 Claude 的工作，丟回去問使用者會大幅降低自動化體感。**尤其只有一張圖時**也一樣——這種雖然需要輪詢、但通常輪沒幾次就出，Claude 自己默默多輪幾次即可，過程不用回報、收到圖再往下走。
 3. 之後逐分頁取圖、回讀驗收（見 §3）。
 > **選擇器會過時**：`composer-plus-btn`、`#prompt-textarea`、`backend-api/estuary/content`、`Control+u` 都是 ChatGPT 的 DOM/URL 內部細節，**ChatGPT 改版即可能失效**——這正是 §2「UI 元素地圖」要處理的：失效時就**重照一次當前頁面、用實況的新定位/取圖網址覆蓋 `.browser/tmp/ui_map_chatgpt.json`**，之後同批再複用。（Gemini 同理，更新 `ui_map_gemini.json`。）
 
@@ -178,4 +179,9 @@ subagent 驗 PASS 後：
 
 **收分頁（業主要求）**：整批都產完、回寫完後，用 `browser_tabs` 把這次開的**所有生圖分頁（ChatGPT＋有用到的 Gemini）全部關掉，只留一個分頁導回 `chatgpt.com`**（乾淨首頁）。**別關整台 Chrome**——那是使用者登入態的 9222 瀏覽器，下次還要用。
 
-**收尾清理（業主要求）**：任務結束前**清空 `.browser/tmp/` 整個資料夾**（`rm -rf "${CLAUDE_PROJECT_DIR:-$(pwd)}/.browser/tmp/"*`）。`.browser/` 其餘（登入態 `.chrome_cdp`、MCP 截圖 `out`）已 gitignore、不用動。**收完後使用者專案只應留下 `data/` 的產物，`.browser/tmp/` 清空、plugin 目錄全程沒被寫過。**
+**收尾清理（業主要求）**：任務結束前清掉三處暫存／垃圾——
+1. **清空 `.browser/tmp/`**（生圖／瀏覽器流程暫存：dataURL `.txt`、PNG、截圖等）：`rm -rf "${CLAUDE_PROJECT_DIR:-$(pwd)}/.browser/tmp/"*`。
+2. **清掉 repo `tmp/` 內自己產的過程性暫存**（讀 JSON 的中間檔、dump 等——Claude 的過程檔本來就該寫在這、收工即刪）：`rm -f "${CLAUDE_PROJECT_DIR:-$(pwd)}/tmp/"*` 或只刪本次產的那幾個。
+3. **掃掉散落在「專案根」的中間垃圾**：正常中間檔都該落在上面兩個 tmp，但萬一有 `.txt`／`.json`／`.png` 等中途漏寫到 project root（例如 MCP `filename` 給了裸檔名），**一律找出來刪掉**——`ls` 專案根確認只剩該有的檔，別把垃圾留在版控視野裡。
+
+`.browser/` 其餘（登入態 `.chrome_cdp`、MCP 截圖 `out`）已 gitignore、不用動。**收完後使用者專案只應留下 `data/` 的產物；`.browser/tmp/`、`tmp/`、專案根都無殘留暫存，plugin 目錄全程沒被寫過。**
